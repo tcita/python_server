@@ -11,7 +11,15 @@ def generate_training_data(num_samples=30000):
     dataset = []
 
     for _ in range(num_samples):
-        A, B = deal_cards_tool()  # 初始A, B
+
+        # 不应该使用无法得分的A,B训练
+        while True:
+            A, B = deal_cards_tool()  # 初始A, B   A, B 都是 list<int>
+
+            # 检查 A 和 B 是否有任何重复的元素
+            if not set(A) & set(B):  # 如果 A 和 B 没有任何重复元素
+                break  # 退出循环，继续处理这对 A, B
+
         max_score, best_moves = recursive_strategy(A, B)
 
         # 提取已有的第一个元素

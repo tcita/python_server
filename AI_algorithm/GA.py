@@ -57,7 +57,8 @@ def calculate_future_score(A, remaining_B, genome):
     future_score = 0  # 初始化未来得分
     if len(remaining_B) == 0:
         return future_score  # 如果没有剩余的B玩家的牌，返回0
-    
+    if not set(A) & set(remaining_B):  # 如果 A 和 B 没有任何重复元素
+        return future_score
       # 复制A玩家的牌以便模拟
     simulated_B=remaining_B.copy()
     
@@ -130,9 +131,9 @@ def simulate_insertion(A, x, pos):
         candidate_A.append(x)  # 如果A为空，则直接插入x
         return 0, 0, len(candidate_A), 0, candidate_A  # 返回相关信息
 
-    # 确保不在第一个元素之前插入
-    if pos == 0:
-         raise ValueError("pos 不能为 0")  # 抛出异常，不允许在第一个位置之前插入
+    # # 确保不在第一个元素之前插入
+    # if pos == 0:
+    #      raise ValueError("pos 不能为 0")  # 抛出异常，不允许在第一个位置之前插入
 
     # 插入x到pos位置
     candidate_A.insert(pos, x)  # 在指定位置插入x
@@ -194,8 +195,8 @@ def genome_choose_insertion(genome, A,  x, remaining_B):
 
     possible_moves = []  # 存储所有候选插入位置的得分
 
-    # 从位置1开始尝试插入（避免插入位置为0）
-    for pos in range(1, len(A) + 1):  # 尝试所有可能的插入位置
+    # 从位置0开始插入  现在可以从0开始了
+    for pos in range(0, len(A) + 1):  # 尝试所有可能的插入位置
         score, removal_length, new_length, match_found, new_A = simulate_insertion(A, x, pos)  # 模拟插入并获取结果
         # print(f"x is {x}")
         current_score = score  # 当前得分
@@ -231,6 +232,7 @@ def genome_choose_insertion(genome, A,  x, remaining_B):
 
 # 模拟一轮游戏
 def simulate_round(genome):
+
     A, B = deal_cards()  # 发牌
     round_score = 0  # 初始化本轮得分
     for i, x in enumerate(B):  # 遍历B玩家的每一张牌
@@ -332,10 +334,10 @@ if __name__ == "__main__":
     print("\nGenome model : ", best_genome)  # 打印最佳基因组
     # evaluate_final_model(best_genome)  # 评估最终模型性能
     save_best_genome(best_genome)  # 保存最佳基因组
-
-    genome=load_best_genome()
-    GA_partial = partial(GA, genome)
-    modsummery(GA_partial,2000)
+    #
+    # genome=load_best_genome()
+    # GA_partial = partial(GA, genome)
+    # modsummery(GA_partial,2000)
 
 
 

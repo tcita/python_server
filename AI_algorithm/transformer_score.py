@@ -264,7 +264,7 @@ def load_model(model_path):
 # -----------------------------
 # 定义 transformer_scoreonly 接口
 # -----------------------------
-def transformer_scoreonly(A_test, B_test,model_path="./trained/seq2seq_model.pth"):
+def transformer_scoreonly(A_test, B_test,model_path="../trained/seq2seq_model.pth"):
     """
     输入 A_test, B_test，返回模型预测的得分
     """

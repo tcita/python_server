@@ -33,7 +33,7 @@ def recursive_strategy(A, B, original_indices=None, move_sequence=None, used_ind
             index_b = original_indices[b][current_used[b]]
             current_used[b] += 1  # 递增当前元素的计数
 
-            for a in range(1, len(A) + 1):
+            for a in range(0, len(A) + 1):
                 insertscore, _, _, _, AA = simulate_insertion(A, b, a)
                 B_new = B[:i] + B[i+1:]
 

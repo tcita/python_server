@@ -4,7 +4,7 @@ from PyInstaller.utils.hooks import collect_all
 
 a = Analysis(
     ['server.py'],
-    pathex=[],  # 使用项目的根路径
+     pathex=['.', '..'],  # 使用项目的根目录和根目录的父目录
     binaries=[],
     datas=[
         ('trained/best_genome.pkl', 'trained'),  # 确保文件路径正确

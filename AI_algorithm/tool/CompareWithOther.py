@@ -122,7 +122,13 @@ def Compare_TwoModel(model, other_model, rounds=1000,plot=false):
 
     for i in range(rounds):
         print(f"第 {i + 1} 轮测试")  # 观察是否卡在某一轮
-        A, B = deal_cards_tool()
+        # 不应该使用无法得分的A,B训练
+        while True:
+            A, B = deal_cards_tool()  # 初始A, B   A, B 都是 list<int>
+
+            # 检查 A 和 B 是否有任何重复的元素
+            if not set(A) & set(B):  # 如果 A 和 B 没有任何重复元素
+                break  # 退出循环，继续处理这对 A, B
         print("  生成 A, B 成功")
         print(A)
         print(B)
@@ -238,8 +244,7 @@ if __name__ == "__main__":
 
 
 # 显示图表的简易测试rounds=10
-#     Compare_TwoModel(genome_scoreonly,transformer_scoreonly,rounds=10, plot=True)
-#     A=[13, 8, 3, 2, 12, 10]
-#     B=[10, 5, 2]
+#     Compare_TwoModel(genome_scoreonly,transformer_scoreonly,rounds=1000)
+
 #     genome_scoreonly(A,B)
     Compare_TwoModel(genome_scoreonly,DNN)

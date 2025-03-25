@@ -12,8 +12,8 @@ def simulate_insertion_tool(A, x, pos):
             candidate_A.append(x)
             return 0, 0, len(candidate_A), 0, candidate_A
 
-        if pos == 0:
-            raise ValueError("pos 不能为 0")
+        # if pos == 0:
+        #     raise ValueError("pos 不能为 0")
 
         candidate_A.insert(pos, x)
         left_idx, right_idx = None, None
@@ -57,6 +57,7 @@ def simulate_insertion_tool(A, x, pos):
 def init_deck_tool():
     return [i for i in range(1, 14) for _ in range(4)]
 
+ # 不应该使用无法得分的A,B训练
 def deal_cards_tool():
     deck = init_deck_tool()
     random.shuffle(deck)
@@ -67,7 +68,7 @@ def deal_cards_tool():
         if card not in a_unique:
             a_unique.add(card)
             A.append(card)
-    # 生成B时确保至少有一个元素与A重复
+
     available_A = [card for card in deck if card in a_unique]
     selected = random.choice(available_A)
     deck.remove(selected)  # 从剩余牌中移除选中的牌
@@ -84,7 +85,7 @@ def load_best_genome(filename="../trained/best_genome.pkl"):
         # 尝试打开并加载文件
         with open(filename, 'rb') as file:
             best_genome = pickle.load(file)
-        print(f"genome loaded from {filename}")
+        # print(f"genome loaded from {filename}")
         return best_genome
     except FileNotFoundError:
         # 文件不存在时的处理

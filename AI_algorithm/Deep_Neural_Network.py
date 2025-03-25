@@ -5,11 +5,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-from torch.distributions import Categorical
 
-from AI_algorithm.GA import simulate_insertion
-from AI_algorithm.brute_force import recursive_strategy
-from AI_algorithm.tool.tool import deal_cards_tool, calculate_score_by_strategy
+from AI_algorithm.tool.tool import calculate_score_by_strategy
 
 jsonfilename="json/data_raw.json"
 GPUDEBUG_MODE = False  # 开启调试模式时设为True，关闭时设为False
@@ -67,10 +64,26 @@ class MovePredictor(nn.Module):
 
 
 def sample_order(logits, temperature=1.0):
-    probs = torch.softmax(logits / temperature, dim=-1)
-    order = torch.argsort(-probs, dim=-1)  # 贪心选择概率最高的顺序
-    return order[:, :, 0].squeeze()
+    """
+    从 logits 采样顺序，确保输出为 0,1,2 的一个排列
+    """
+    probs = torch.softmax(logits / temperature, dim=-1)  # 计算概率
+    order = torch.argsort(-probs, dim=-1)  # 概率最高的优先
+    order = order[:, :, 0].squeeze()  # 取每个样本的最大概率索引
 
+    # 确保 order 是二维张量，即使 batch_size=1
+    if order.dim() == 1:
+        order = order.unsqueeze(0)
+
+    # 确保 order 是 0,1,2 的一个排列
+    batch_size = order.shape[0]
+    valid_orders = torch.stack([torch.randperm(3) for _ in range(batch_size)]).to(order.device)
+
+    # 使用张量操作代替列表推导式
+    mask = torch.tensor([len(set(row.tolist())) != 3 for row in order], device=order.device)
+    order[mask] = valid_orders[mask]  # 如果 order 不是 0,1,2 的排列，则随机重新赋值
+
+    return order
 
 def prepare_data(sample: dict):
     """
@@ -106,7 +119,7 @@ def train_model(train_data, epochs=2000, batch_size=512, model_path="./trained/m
     conditional_print("显存已分配总量:", torch.cuda.memory_allocated() / 1e6, "MB")  # 当前显存分配
     conditional_print("显存峰值:", torch.cuda.max_memory_allocated() / 1e6, "MB")  # 历史最大显存使用
 
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    optimizer = optim.Adam(model.parameters(), lr=0.01)
     order_criterion = nn.CrossEntropyLoss().to(device)
     pos_criterion = nn.MSELoss().to(device)
     # pos_criterion = nn.CrossEntropyLoss().to(device)
@@ -139,7 +152,7 @@ def train_model(train_data, epochs=2000, batch_size=512, model_path="./trained/m
             inputs = torch.FloatTensor(np.array(inputs)).to(device)
             order_targets = torch.LongTensor(np.array(order_targets)).to(device)
 
-            pos_targets = [pos_tgt - 1 for pos_tgt in pos_targets]  # 变成 0 到 len(A)-1
+            pos_targets = [pos_tgt  for pos_tgt in pos_targets]
             pos_targets = torch.FloatTensor(np.array(pos_targets)).to(device)
 
             end_time = time.perf_counter()
@@ -177,54 +190,36 @@ def train_model(train_data, epochs=2000, batch_size=512, model_path="./trained/m
     return model
 
 
-def DNNpredict(A, B, model_path="./trained/move_predictor.pth"):
+def DNNpredict(A, B, model):
     """
-    根据输入的A和B利用训练好的神经网络模型预测最佳移动和得分
+    根据输入的 A 和 B，利用训练好的神经网络模型预测最佳移动和得分
+    :param A: 列表，表示当前状态
+    :param B: 列表，表示可选操作
+    :param model: 已经加载好的 MovePredictor 模型实例
+    :return: 最佳策略和得分
     """
     try:
-        # 如果A和B没有交集且检查B中有重复元素，则不需要预测  返回固定的移动和得分0 如  1， [2,3,4,5,6,7] ，1
+        # 如果 A 和 B 没有交集，且 B 中没有重复元素，直接返回固定策略
         if not set(A) & set(B) and len(B) == len(set(B)):
             return [[0, 1], [1, 1], [2, 1]], 0
 
-        input_size = 9
-        model = MovePredictor(input_size).to(device)
+        # 确保传入的 model 是 MovePredictor 实例
+        if not isinstance(model, MovePredictor):
+            raise ValueError("Expected a MovePredictor instance, but got {}".format(type(model)))
 
-        try:
-
-            model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
-            print(f"DNN Model successfully loaded from {model_path}")
-        except FileNotFoundError:
-            # 文件不存在时的处理
-            print(f"Error: The file '{model_path}' was not found. Please check the file path.")
-        except PermissionError:
-            # 权限不足时的处理
-            print(f"Error: Permission denied when accessing the file '{model_path}'.")
-        except RuntimeError as e:
-            # 模型权重文件损坏或与模型结构不匹配时的处理
-            if "state_dict" in str(e):
-                print(f"Error: The file '{model_path}' might be corrupted or incompatible with the model architecture.")
-            else:
-                print(f"Runtime error occurred while loading the model weights: {e}")
-        except Exception as e:
-            # 捕获其他未知异常
-            print(f"An unexpected error occurred while loading the model weights from '{model_path}': {e}")
-        model.eval()
-
+        model.eval()  # 设置为评估模式
         input_vector = np.array(A + B, dtype=np.float32)
         input_tensor = torch.FloatTensor(input_vector).unsqueeze(0).to(device)
 
         with torch.no_grad():
             order_logits, pos_preds = model(input_tensor)
 
+        # 确保 order 是 0, 1, 2 的一个排列
         order = sample_order(order_logits).squeeze(0).cpu().numpy()
-        # # 如果采样结果无效，则采用默认顺序
-        # if len(set(order)) != 3:
-        #     order = np.array([0, 1, 2])
 
         pos_range = len(A)
         pos_preds = pos_preds.squeeze(0).cpu().numpy()
-        # 限制位置预测在1到pos_range之间
-        pred_moves = [int(np.clip(p, 1, pos_range)) for p in pos_preds]
+        pred_moves = [int(np.clip(p, 0, pos_range)) for p in pos_preds]
 
         best_moves = [[int(order[i]), pred_moves[i]] for i in range(3)]
         pred_score = calculate_score(A, B, order, pred_moves)
@@ -234,7 +229,6 @@ def DNNpredict(A, B, model_path="./trained/move_predictor.pth"):
         print(f"Error occurred with inputs A: {A} and B: {B} in DNN")
         print(f"Error message: {str(e)}")
         raise
-
 
 
 def train():
@@ -249,32 +243,8 @@ def train():
         print("未找到json文件，请确保文件存在")
         exit(1)
 
-    train_model(train_data, epochs=10000, batch_size=1024, model_path="./trained/move_predictor.pth")
+    train_model(train_data, epochs=2500, batch_size=1024, model_path="./trained/move_predictor.pth")
 
 
 if __name__ == "__main__":
     train()
-    # A= [1, 3, 7, 6, 2, 9]
-    # B= [6, 8, 9]
-    # [[1, 1], [2, 1], [0, 3]]
-    # print(DNNpredict(A, B))
-    # A=[4, 9, 11, 2, 13, 8]
-    # B=[8, 8, 11]
-    # best_moves, score = DNNpredict(A, B, model_path="./trained/move_predictor.pth")
-    # print(f"\nA: {A}")
-    # print(f"B: {B}")
-    # print(f"预测最佳移动: {best_moves}")
-    # print(f"预测得分: {score}")
-    # 以下代码为额外测试，默认注释，若需要可取消注释
-    # for _ in range(10):
-    #
-    #
-    #     A, B = deal_cards_tool()
-    #     best_moves, score = DNNpredict(A, B, model_path="move_predictor.pth")
-    #     print(f"\nA: {A}")
-    #     print(f"B: {B}")
-    #     print(f"预测最佳移动: {best_moves}")
-    #     print(f"预测得分: {score}")
-    #     rec_score,rec_moves = recursive_strategy(A, B)
-    #     print(f"递归算法得分: {rec_score}")
-    #     print(f"递归算法移动: ",rec_moves)
