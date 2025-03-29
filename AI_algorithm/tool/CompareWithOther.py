@@ -1,6 +1,7 @@
 import pickle
 import time
 import numpy as np
+import torch
 from scipy import stats
 from functools import partial
 
@@ -14,6 +15,7 @@ from AI_algorithm.GA import genome_choose_insertion
 import matplotlib.pyplot as plt
 
 from AI_algorithm.brute_force import recursive_strategy
+from AI_algorithm.server import load_model_from_memory, MODEL_PATH
 from AI_algorithm.tool.tool import load_best_genome, deal_cards_tool
 from AI_algorithm.transformer_score import transformer_scoreonly
 
@@ -127,7 +129,7 @@ def Compare_TwoModel(model, other_model, rounds=1000,plot=false):
             A, B = deal_cards_tool()  # 初始A, B   A, B 都是 list<int>
 
             # 检查 A 和 B 是否有任何重复的元素
-            if not set(A) & set(B):  # 如果 A 和 B 没有任何重复元素
+            if  set(A) & set(B):  # 如果 A 和 B 有重复元素
                 break  # 退出循环，继续处理这对 A, B
         print("  生成 A, B 成功")
         print(A)
@@ -230,7 +232,9 @@ def genome_scoreonly(A,B):
     score,_=testGeonme_with_given_A_B(A,B)
     return score
 def DNN(A,B):
-    move,score=DNNpredict(A,B,"../trained/move_predictor.pth")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = load_model_from_memory("../trained/move_predictor.pth", device)
+    move,score=DNNpredict(A,B,model)
     return score
 def recursive(A,B):
     score,_=recursive_strategy(A,B)
@@ -245,6 +249,8 @@ if __name__ == "__main__":
 
 # 显示图表的简易测试rounds=10
 #     Compare_TwoModel(genome_scoreonly,transformer_scoreonly,rounds=1000)
+    A=[1,2,3,4,5,6]
+    B=[1,2,3]
 
-#     genome_scoreonly(A,B)
+    # print(transformer_scoreonly(A,B))
     Compare_TwoModel(genome_scoreonly,DNN)

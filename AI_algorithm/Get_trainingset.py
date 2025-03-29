@@ -7,7 +7,7 @@ from AI_algorithm.brute_force import recursive_strategy
 from AI_algorithm.tool.tool import deal_cards_tool
 
 
-def generate_training_data(num_samples=30000):
+def generate_training_data(num_samples=50000):
     dataset = []
 
     for _ in range(num_samples):
@@ -17,7 +17,7 @@ def generate_training_data(num_samples=30000):
             A, B = deal_cards_tool()  # 初始A, B   A, B 都是 list<int>
 
             # 检查 A 和 B 是否有任何重复的元素
-            if not set(A) & set(B):  # 如果 A 和 B 没有任何重复元素
+            if  set(A) & set(B):  # 如果 A 和 B 有任何重复元素
                 break  # 退出循环，继续处理这对 A, B
 
         max_score, best_moves = recursive_strategy(A, B)
