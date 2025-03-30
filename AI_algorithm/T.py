@@ -33,10 +33,9 @@ def calculate_score(A, B, order, moves):
     total_score = calculate_score_by_strategy(A, B, strategy)
     return total_score
 
-
-class MovePredictor(nn.Module):
+class TMovePredictor(nn.Module):
     def __init__(self, input_size_A: int, input_size_B: int):
-        super(MovePredictor, self).__init__()
+        super(TMovePredictor, self).__init__()
 
         # A的网络路径
         self.fc1_A = nn.Linear(input_size_A, 128)
@@ -50,15 +49,22 @@ class MovePredictor(nn.Module):
         self.fc2_B = nn.Linear(128, 64)
         self.bn2_B = nn.BatchNorm1d(64)
 
-        # 融合A和B的特征
-        self.fc3 = nn.Linear(64 + 64, 32)  # A和B的特征被拼接在一起
+        # 位置编码路径
+        self.fc_pos = nn.Linear(7, 64)  # 位置编码的维度（7：即最大插入位置）
+
+        # 融合A、B和位置编码的特征
+        # num_b是3，那么x_pos的维度将会是batch_size * 3 * 64 = batch_size * 192。在这种情况下，拼接后的
+        # x的维度将会是batch_size * (64 + 64 + 192) = batch_size * 320
+
+        self.fc3 = nn.Linear(320, 32)
+
         self.bn3 = nn.BatchNorm1d(32)
 
         # 输出层
         self.order_head = nn.Linear(32, 9)
         self.pos_head = nn.Linear(32, 3)
 
-    def forward(self, A, B):
+    def forward(self, A, B, position_encodings):
         # 处理A的路径
         x_A = torch.relu(self.bn1_A(self.fc1_A(A)))
         x_A = torch.relu(self.bn2_A(self.fc2_A(x_A)))
@@ -67,9 +73,28 @@ class MovePredictor(nn.Module):
         x_B = torch.relu(self.bn1_B(self.fc1_B(B)))
         x_B = torch.relu(self.bn2_B(self.fc2_B(x_B)))
 
-        # 合并A和B的特征
-        x = torch.cat([x_A, x_B], dim=-1)  # 拼接两个向量
+        # 处理位置编码的路径
+        x_pos = torch.relu(self.fc_pos(position_encodings))
 
+        # print(f"x_A shape: {x_A.shape}")
+        # print(f"x_B shape: {x_B.shape}")
+        # print(f"x_pos shape: {x_pos.shape}")
+
+        # 如果 x_pos 是三维的，展平为二维
+        if x_pos.dim() == 3:
+            x_pos = x_pos.view(x_pos.size(0), -1)  # 展平为 (batch_size, 192)
+        elif x_pos.dim() == 2:
+            pass  # 已经是二维，不需要做额外处理
+        else:
+            raise ValueError(f"Unexpected dimension for x_pos: {x_pos.dim()}")
+
+        # 合并A、B和位置编码的特征
+        x = torch.cat([x_A, x_B, x_pos], dim=-1)  # 拼接A、B和位置编码的特征
+
+        # 确保拼接后的维度与fc3匹配
+        # print(f"拼接后的特征维度: {x.shape}")
+
+        # 经过全连接层
         x = torch.relu(self.bn3(self.fc3(x)))
 
         order_logits = self.order_head(x).view(-1, 3, 3)
@@ -99,27 +124,22 @@ def sample_order(logits, temperature=1.0):
 
     return order
 
-
 def prepare_data(sample: dict):
-    """
-    数据预处理：
-      - 检查A和B是否存在交集（过滤噪音样本）
-      - 构建输入向量以及目标输出（顺序与位置）
-    """
     A = sample["A"]
     B = sample["B"]
     best_moves = sample["best_moves"]
 
-    # 填充A和B到9个元素
-    # 如果A或B的长度小于9，用0填充
-    if len(A) < 9:
-        A = A + [0] * (9 - len(A))
-    if len(B) < 9:
-        B = B + [0] * (9 - len(B))
+    # 固定A和B的长度
+    assert len(A) == 6, f"A的长度应该是6，但实际是{len(A)}"
+    assert len(B) == 3, f"B的长度应该是3，但实际是{len(B)}"
 
-    # 如果A或B的长度大于9，裁剪为前9个元素
-    A = A[:9]
-    B = B[:9]
+    # 为每个B元素分配一个动态位置编码
+    position_encodings = []
+    for i in range(len(B)):
+        # 对于每个B[i]，它可以插入到位置 0 到 len(A) 之间
+        position_encoding = [0] * (len(A) + 1)  # 位置编码范围是 0 到 len(A)
+        position_encoding[i] = 1  # 在插入位置处设置为1
+        position_encodings.append(position_encoding)
 
     # 将A和B拼接成输入向量
     input_vector_A = np.array(A, dtype=np.float32)
@@ -128,14 +148,12 @@ def prepare_data(sample: dict):
     order_target = np.array([move[0] for move in best_moves], dtype=np.int64)
     pos_target = np.array([move[1] for move in best_moves], dtype=np.float32)
 
-    return input_vector_A, input_vector_B, order_target, pos_target
-
-
+    return input_vector_A, input_vector_B, order_target, pos_target, position_encodings
 
 def train_model(train_data, epochs=2000, batch_size=512, model_path="./trained/T.pth"):
-    input_size_A = 9  # A的维度
-    input_size_B = 9  # B的维度
-    model = MovePredictor(input_size_A, input_size_B).to(device)
+    input_size_A = 6  # A的维度
+    input_size_B = 3  # B的维度
+    model = TMovePredictor(input_size_A, input_size_B).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=0.01)
     order_criterion = nn.CrossEntropyLoss().to(device)
@@ -148,16 +166,17 @@ def train_model(train_data, epochs=2000, batch_size=512, model_path="./trained/T
 
         for i in range(0, len(train_data), batch_size):
             batch = train_data[i:i + batch_size]
-            inputs_A, inputs_B, order_targets, pos_targets = [], [], [], []
+            inputs_A, inputs_B, order_targets, pos_targets, position_encodings = [], [], [], [], []
 
             for sample in batch:
-                input_A, input_B, order_tgt, pos_tgt = prepare_data(sample)
+                input_A, input_B, order_tgt, pos_tgt, pos_enc = prepare_data(sample)
                 if input_A is None or input_B is None:  # 跳过噪音样本
                     continue
                 inputs_A.append(input_A)
                 inputs_B.append(input_B)
                 order_targets.append(order_tgt)
                 pos_targets.append(pos_tgt)
+                position_encodings.append(pos_enc)
 
             if not inputs_A:
                 continue
@@ -166,8 +185,10 @@ def train_model(train_data, epochs=2000, batch_size=512, model_path="./trained/T
             inputs_B = torch.FloatTensor(np.array(inputs_B)).to(device)
             order_targets = torch.LongTensor(np.array(order_targets)).to(device)
             pos_targets = torch.FloatTensor(np.array(pos_targets)).to(device)
+            position_encodings = torch.FloatTensor(np.array(position_encodings)).to(device)
 
-            order_logits, pos_preds = model(inputs_A, inputs_B)
+            # 将位置编码传递给模型
+            order_logits, pos_preds = model(inputs_A, inputs_B, position_encodings)
 
             order_loss = order_criterion(order_logits.view(-1, 3), order_targets.view(-1))
             pos_loss = pos_criterion(pos_preds, pos_targets)
@@ -180,49 +201,73 @@ def train_model(train_data, epochs=2000, batch_size=512, model_path="./trained/T
             total_loss += loss.item()
             batch_count += 1
 
+            # 打印当前batch的进度
+            if batch_count % 10 == 0:
+                conditional_print(f"Epoch {epoch}, Batch {batch_count}, Loss: {loss.item():.4f}")
+
+        # 每100个epoch打印一次平均损失
         if epoch % 100 == 0:
             avg_loss = total_loss / batch_count if batch_count > 0 else total_loss
-            print(f"Epoch {epoch}, Loss: {avg_loss:.4f}")
+            print(f"Epoch {epoch}, Average Loss: {avg_loss:.4f}, Learning Rate: {optimizer.param_groups[0]['lr']}")
+
 
     torch.save(model.state_dict(), model_path)
     print(f"模型已保存至 {model_path}")
     return model
 
-
-def DNNpredict(A, B, model):
+def TDNNpredict(A, B, model):
     """
     根据输入的 A 和 B，利用训练好的神经网络模型预测最佳移动和得分
     :param A: 列表，表示当前状态
     :param B: 列表，表示可选操作
-    :param model: 已经加载好的 MovePredictor 模型实例
+    :param model: 已经加载好的 TMovePredictor 模型实例
     :return: 最佳策略和得分
     """
     try:
         if not set(A) & set(B) and len(B) == len(set(B)):
             return [[0, 1], [1, 1], [2, 1]], 0
 
-        if not isinstance(model, MovePredictor):
-            raise ValueError("Expected a MovePredictor instance, but got {}".format(type(model)))
+        if not isinstance(model, TMovePredictor):
+            raise ValueError(f"Expected a TMovePredictor instance, but got {type(model)}")
 
         model.eval()
+
+        # 准备输入数据
         input_vector_A = np.array(A, dtype=np.float32)
         input_vector_B = np.array(B, dtype=np.float32)
 
+        # 生成位置编码
+        position_encodings = []
+        for i in range(len(B)):
+            position_encoding = [0] * (len(A) + 1)  # 位置编码范围是 0 到 len(A)
+            position_encoding[i] = 1  # 在插入位置处设置为1
+            position_encodings.append(position_encoding)
+
+        # Convert to Tensor and add batch dimension
         input_tensor_A = torch.FloatTensor(input_vector_A).unsqueeze(0).to(device)
         input_tensor_B = torch.FloatTensor(input_vector_B).unsqueeze(0).to(device)
+        position_encodings_tensor = torch.FloatTensor(np.array(position_encodings)).unsqueeze(0).to(device) # Add unsqueeze(0) here
 
         with torch.no_grad():
-            order_logits, pos_preds = model(input_tensor_A, input_tensor_B)
+            # 获取模型输出
+            order_logits, pos_preds = model(input_tensor_A, input_tensor_B, position_encodings_tensor)
 
+        # 从logits中获取排序顺序
         order = sample_order(order_logits).squeeze(0).cpu().numpy()
+
+        # 处理位置预测（确保预测的位置范围不超出有效范围）
         pos_range = len(A)
         pos_preds = pos_preds.squeeze(0).cpu().numpy()
         pred_moves = [int(np.clip(p, 0, pos_range)) for p in pos_preds]
 
+        # 计算最佳移动
         best_moves = [[int(order[i]), pred_moves[i]] for i in range(3)]
+
+        # 计算预测的得分
         pred_score = calculate_score(A, B, order, pred_moves)
 
         return best_moves, pred_score
+
     except Exception as e:
         print(f"Error occurred with inputs A: {A} and B: {B} in DNN")
         print(f"Error message: {str(e)}")
@@ -240,7 +285,7 @@ def train():
         print("未找到json文件，请确保文件存在")
         exit(1)
 
-    train_model(train_data, epochs=2500, batch_size=1024, model_path="./trained/T.pth")
+    train_model(train_data, epochs=3000, batch_size=1024, model_path="./trained/T.pth")
 
 
 if __name__ == "__main__":

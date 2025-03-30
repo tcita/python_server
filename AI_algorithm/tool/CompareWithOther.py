@@ -3,7 +3,7 @@ import time
 import numpy as np
 import torch
 from scipy import stats
-from functools import partial
+
 
 from sympy import false
 
@@ -14,10 +14,12 @@ from AI_algorithm.GA import genome_choose_insertion
 
 import matplotlib.pyplot as plt
 
+
+from AI_algorithm.Trans import TransformerMovePredictor, Transformer_predict
 from AI_algorithm.brute_force import recursive_strategy
-from AI_algorithm.server import load_model_from_memory, MODEL_PATH
+from AI_algorithm.server import load_model_from_memory
 from AI_algorithm.tool.tool import load_best_genome, deal_cards_tool
-from AI_algorithm.transformer_score import transformer_scoreonly
+
 
 genome_loaded = load_best_genome()
 def  testGeonme_with_given_A_B(A, B, best_genome=genome_loaded):
@@ -236,21 +238,108 @@ def DNN(A,B):
     model = load_model_from_memory("../trained/move_predictor.pth", device)
     move,score=DNNpredict(A,B,model)
     return score
+
+def DNN_Strategy(A,B):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = load_model_from_memory("../trained/move_predictor.pth", device)
+    move,_=DNNpredict(A,B,model)
+    return move
+def TransformerStrategy(A, B):
+    num_a_test = 6 # <--- 修改
+    num_b_test = 3
+    # 确保这些参数与训练时一致
+    d_model_test = 128
+    nhead_test = 4
+    num_layers_test = 3
+    dim_ff_test = 256
+    test_model = TransformerMovePredictor(
+        num_a=num_a_test, num_b=num_b_test, d_model=d_model_test,
+        nhead=nhead_test, num_encoder_layers=num_layers_test,
+        dim_feedforward=dim_ff_test
+    ).to(device)
+
+    model_path_test = "../trained/transformer_move_predictor_6x3.pth" # <--- 修改
+    test_model.load_state_dict(torch.load(model_path_test, map_location=device))
+    Strategy, _ = Transformer_predict(A, B, test_model, num_a=num_a_test, num_b=num_b_test)
+
+    return Strategy
+import io
+import logging
+
+# # 设置 logger
+# logger = logging.getLogger(__name__)
+# def load_model_from_memory_T(model_path, device):
+#     try:
+#         logger.info(f"Starting to load model from memory: {model_path}")
+#
+#         # 读取模型文件到内存
+#         with open(model_path, 'rb') as f:
+#             model_data = f.read()
+#
+#         # 将字节数据包装为 BytesIO 对象
+#         buffer = io.BytesIO(model_data)
+#         buffer.seek(0)  # 确保可以 seek
+#
+#         # 初始化模型实例（使用正确的模型类 TMovePredictor）
+#         model = TMovePredictor(input_size_A=6, input_size_B=3)
+#         logger.info(f"Model initialized: {model}")
+#
+#         # 加载模型的 state_dict
+#         state_dict = torch.load(buffer, map_location=device)  # 从 buffer 加载
+#         logger.info("State dict loaded successfully")
+#
+#         # 加载 state_dict 到模型
+#         model.load_state_dict(state_dict, strict=False)  # 使用 strict=False 来适应不同的模型结构
+#         logger.info(f"Model after loading: {model}")
+#
+#         model.to(device)
+#         model.eval()  # 设置为评估模式
+#         logger.info("Model loaded and set to evaluation mode")
+#
+#         return model
+#
+#     except Exception as e:
+#         logger.error(f"Error loading model: {e}")
+#         raise e
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def Transformerscore(A, B):
+    num_a_test = 6 # <--- 修改
+    num_b_test = 3
+    # 确保这些参数与训练时一致
+    d_model_test = 128
+    nhead_test = 4
+    num_layers_test = 3
+    dim_ff_test = 256
+    test_model = TransformerMovePredictor(
+        num_a=num_a_test, num_b=num_b_test, d_model=d_model_test,
+        nhead=nhead_test, num_encoder_layers=num_layers_test,
+        dim_feedforward=dim_ff_test
+    ).to(device)
+
+    model_path_test = "../trained/transformer_move_predictor_6x3.pth" # <--- 修改
+    test_model.load_state_dict(torch.load(model_path_test, map_location=device))
+    _, predicted_score = Transformer_predict(A, B, test_model, num_a=num_a_test, num_b=num_b_test)
+
+    return predicted_score
+
+
+
 def recursive(A,B):
     score,_=recursive_strategy(A,B)
     return score
 
-def transformer_score(A,B):
-    predicted_score=transformer_scoreonly(A, B, "../trained/seq2seq_model.pth")
-    return predicted_score
+# def transformer_score(A,B):
+#     predicted_score=transformer_scoreonly(A, B, "../trained/seq2seq_model.pth")
+#     return predicted_score
 
 if __name__ == "__main__":
 
 
 # 显示图表的简易测试rounds=10
 #     Compare_TwoModel(genome_scoreonly,transformer_scoreonly,rounds=1000)
-    A=[1,2,3,4,5,6]
-    B=[1,2,3]
-
-    # print(transformer_scoreonly(A,B))
-    Compare_TwoModel(genome_scoreonly,DNN)
+#     A=[1,2,3,4,5,6]
+#     B=[1,2,3]
+#
+#     print(TDNN(A,B))
+    Compare_TwoModel(DNN,Transformerscore)

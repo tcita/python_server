@@ -1,7 +1,9 @@
 import pickle
 import random
 import numpy as np
+import torch
 
+# from AI_algorithm.Trans import TransformerMovePredictor, Transformer_predict
 
 
 def simulate_insertion_tool(A, x, pos):
@@ -132,6 +134,8 @@ def calculate_score_by_strategy(A, B, strategy):
     score2, _, _, _,A  = simulate_insertion_tool(A, B[strategy[1][0]],  max(1, min(len(A), strategy[1][1])))
     score3, _, _, _,_  = simulate_insertion_tool(A, B[strategy[2][0]],  max(1, min(len(A), strategy[2][1])))
     return score1 + score2 + score3
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 if __name__ == '__main__':
 

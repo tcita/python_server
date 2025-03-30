@@ -253,7 +253,7 @@ def evaluate_genomes_with_processes(population, num_rounds=1000, num_processes=8
     return fitnesses  # 返回评估结果
 
 # 遗传算法过程
-def genetic_algorithm(pop_size=1000, generations=50, num_rounds=1000, elitism_ratio=0.1, tournament_size=3, num_processes=8):
+def genetic_algorithm(pop_size=1000, generations=60, num_rounds=1000, elitism_ratio=0.1, tournament_size=3, num_processes=8):
 
     start_time = time.time()  # 记录开始时间
     population = [[random.uniform(-1, 1) for _ in range(5)] for _ in range(pop_size)]  # 初始化种群

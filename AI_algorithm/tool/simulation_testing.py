@@ -1,5 +1,9 @@
-from AI_algorithm.Deep_Neural_Network import DNNpredict
+import torch
+
 from AI_algorithm.GA import Get_GA_Strategy
+
+from AI_algorithm.tool.CompareWithOther import DNN_Strategy, TransformerStrategy
+
 from AI_algorithm.tool.tool import deal_cards_tool, load_best_genome, simulate_insertion_tool
 
 
@@ -36,31 +40,36 @@ def strategy_scoring(A, B, strategy):
     return score1+score2+score3
     # print(f"总得分为: {score1 + score2 + score3}")
 count = 0
-# for i in range(100000):
-#     A,B=deal_cards_tool()
-#     genome=load_best_genome("../trained/best_genome.pkl")
-#     GA_Strategy=Get_GA_Strategy(genome,A,B)
-#     # print("基于遗传算法的启发式方法的仿真模拟")
-#     ga=strategy_scoring(A,B,GA_Strategy)
-#     # print("-"*20)
-#     # print("-"*20)
-#     # print("深度神经网络的仿真模拟")
-#     DNN_Strategy,_=DNNpredict(A,B,"../trained/move_predictor.pth")
-#     dnn=strategy_scoring(A,B,DNN_Strategy)
-#     # print("-"*20)
-#     # print("-"*20)
-#
-#     DNNFormatChecking(DNN_Strategy)
-#
-#
-#
-#     if(ga<dnn):
-#         count=count+1;
-#         print(count)
-#         print(DNN_Strategy)
-A =[100, 2, 3, 10, 5, 6]  # 示例 A 列表
-B =[6, 7, 8]
-DNN_Strategy,_=DNNpredict(A,B,"../trained/move_predictor.pth")
-dnn=strategy_scoring(A,B,DNN_Strategy)
-print(dnn)
-print(DNN_Strategy)
+for i in range(100000):
+    A,B=deal_cards_tool()
+    genome=load_best_genome("../trained/best_genome.pkl")
+    GA_Strategy=Get_GA_Strategy(genome,A,B)
+    # print("基于遗传算法的启发式方法的仿真模拟")
+    ga=strategy_scoring(A,B,GA_Strategy)
+    # print("-"*20)
+    # print("-"*20)
+    # print("深度神经网络的仿真模拟")
+    # DNN_Strategy,_=DNNpredict(A,B,"../trained/move_predictor.pth")
+
+    #
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    move=DNN_Strategy(A,B)
+    dnn=strategy_scoring(A,B,move)
+
+
+    TF_Strategy=TransformerStrategy(A,B)
+    tr=strategy_scoring(A,B,TF_Strategy)
+    # DNNFormatChecking(DNN_Strategy)
+
+
+
+    if(tr<dnn):
+        count=count+1;
+        print(count)
+        # print(DNN_Strategy)
+# A =[100, 2, 3, 10, 5, 6]  # 示例 A 列表
+# B =[6, 7, 8]
+# DNN_Strategy,_=DNNpredict(A,B,"../trained/move_predictor.pth")
+# dnn=strategy_scoring(A,B,DNN_Strategy)
+# print(dnn)
+# print(DNN_Strategy)
