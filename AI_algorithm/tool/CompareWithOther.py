@@ -1,3 +1,4 @@
+import io
 import pickle
 import time
 import numpy as np
@@ -8,50 +9,88 @@ from scipy import stats
 from sympy import false
 
 from AI_algorithm.Deep_Neural_Network import  DNNpredict
-from AI_algorithm.GA import genome_choose_insertion
-
-
+from AI_algorithm.GA import genome_choose_insertion, Get_GA_Strategy
 
 import matplotlib.pyplot as plt
 
 
 from AI_algorithm.Trans import TransformerMovePredictor, Transformer_predict
+from AI_algorithm.Trans_assist import TransformerMovePredictor_assist, Transformer_predict_assist
 from AI_algorithm.brute_force import recursive_strategy
 from AI_algorithm.server import load_model_from_memory
-from AI_algorithm.tool.tool import load_best_genome, deal_cards_tool
+from AI_algorithm.tool.tool import load_best_genome, deal_cards_tool, simulate_insertion_tool
 
 
 genome_loaded = load_best_genome()
-def  testGeonme_with_given_A_B(A, B, best_genome=genome_loaded):
 
-        
-    # 复制 A 避免修改原始数据
-    genetic_A = A.copy()
-    genetic_score = 0
 
-    # 计算遗传算法的运行时间
-    start_time_genetic = time.time()
-    for i, card in enumerate(B):
-        remaining_B = B[i + 1 :]
-        _, score, genetic_A = genome_choose_insertion(best_genome, genetic_A, card, remaining_B)
-        genetic_score += score
-    end_time_genetic = time.time()
-    time_genetic = end_time_genetic - start_time_genetic  # 计算遗传算法时间
+def strategy_TrueScore(A, B, strategy):
+    try:
+        # 第一步插入
+        score1, _, _, _, A = simulate_insertion_tool(
+            A,
+            B[strategy[0][0]],
+            min(len(A), strategy[0][1]))
 
-    # # 计算 other_model 算法的运行时间
-    # start_time_other = time.time()
-    # other_score = other_model(A.copy(), B.copy())
-    # end_time_other = time.time()
-    # time_other = end_time_other - start_time_other  # 计算其他算法时间
+        # print(f"1. 将 {B[strategy[0][0]]} 插入A<{strategy[0][1]}>号位  得分: {score1}    A变为{A}")
 
-    return genetic_score, time_genetic
-def TestOther_with_given_A_B(other_model,A,B):
+        # 第二步插入
+        score2, _, _, _, A = simulate_insertion_tool(
+            A,
+            B[strategy[1][0]],
+            min(len(A),strategy[1][1])
+        )
+        # print(f"2. 将 {B[strategy[1][0]]} 插入A<{strategy[1][1]}>号位  得分: {score2}    A变为{A}")
+
+        # 第三步插入
+        score3, _, _, _, A = simulate_insertion_tool(
+            A,
+            B[strategy[2][0]],
+           min(len(A),strategy[2][1]))
+
+        # print(f"3. 将 {B[strategy[2][0]]} 插入A<{strategy[2][1]}>号位  得分: {score3}    A变为{A}")
+
+        return score1 + score2 + score3
+
+    except IndexError as e:
+
+        print("相关变量的值：")
+        print(f"strategy: {strategy}")
+        print(f"A: {A}")
+        print(f"B: {B}")
+
+# def  testGeonme_with_given_A_B(A, B, best_genome=genome_loaded):
+#
+#
+#     # 复制 A 避免修改原始数据
+#     genetic_A = A.copy()
+#     genetic_score = 0
+#
+#     # 计算遗传算法的运行时间
+#     start_time_genetic = time.time()
+#     for i, card in enumerate(B):
+#         remaining_B = B[i + 1 :]
+#         _, score, genetic_A = genome_choose_insertion(best_genome, genetic_A, card, remaining_B)
+#         genetic_score += score
+#     end_time_genetic = time.time()
+#     time_genetic = end_time_genetic - start_time_genetic  # 计算遗传算法时间
+#
+#     # # 计算 other_model 算法的运行时间
+#     # start_time_other = time.time()
+#     # other_score = other_model(A.copy(), B.copy())
+#     # end_time_other = time.time()
+#     # time_other = end_time_other - start_time_other  # 计算其他算法时间
+#
+#     return genetic_score, time_genetic
+def TestModel_with_given_A_B(other_model, A, B):
     # 计算 other_model 算法的运行时间
     start_time_other = time.time()
-    other_score = other_model(A.copy(), B.copy())
+    move = other_model(A.copy(), B.copy())
+    score=strategy_TrueScore(A, B, move)
+
     end_time_other = time.time()
     time_other = end_time_other - start_time_other  # 计算其他算法时间
-    return other_score, time_other
+    return score, time_other,move
 def compute_statistics(data):
     """计算均值、中位数、标准差、最小值和最大值"""
     return {
@@ -130,29 +169,52 @@ def Compare_TwoModel(model, other_model, rounds=1000,plot=false):
         while True:
             A, B = deal_cards_tool()  # 初始A, B   A, B 都是 list<int>
 
-            # 检查 A 和 B 是否有任何重复的元素
+            # 检查 A 和 B 是否有任何重复的元素,确保只用能得分的A,B训练
             if  set(A) & set(B):  # 如果 A 和 B 有重复元素
                 break  # 退出循环，继续处理这对 A, B
         print("  生成 A, B 成功")
         print(A)
         print(B)
 
-        score_1, time_1 = TestOther_with_given_A_B(model, A, B)
+# 这里的move并没有使用 计算它是为了统计时间
+        score_1, time_1,move_1 = TestModel_with_given_A_B(model, A, B)
 
 
         times_list1.append(time_1)
 
 
-        score_2, time_2 = TestOther_with_given_A_B(other_model, A, B)
+        score_2, time_2 ,move_2= TestModel_with_given_A_B(other_model, A, B)
 
         times_list2.append(time_2)
 
-        true_score, _ = TestOther_with_given_A_B(recursive, A, B)
+        true_score, true_move = recursive(A,B)
         print('-'*20)
         print(f" 真实值 ：{true_score}")
         print(f" 算法1得分 ：{score_1}")
         print(f" 算法2得分 ：{score_2}")
         print('-' * 20)
+        # 检查差距过大的策略
+        print("这样的移动造成了相对于真实值较低的得分")
+        if(true_score-score_1>=10 ):
+            print("算法1得分较低")
+            print(A)
+            print(B)
+            print(f" 算法1  ：{move_1}")
+            print(f" 真实最佳移动：{true_move}")
+            print(f" 真实值：{true_score}")
+            print(f" 算法1 得分：{score_1}")
+
+
+        if(true_score-score_2>=10):
+            print("算法2得分较低")
+            print(A)
+            print(B)
+            print(f" 算法2  ：{move_2}")
+            print(f" 真实最佳移动：{true_move}")
+            print(f" 真实值：{true_score}")
+            print(f" 算法2 得分：{score_2}")
+            print('-'*20)
+
         test_scores_1.append(score_1)
         test_scores_2.append(score_2)
         true_score_list.append(true_score)
@@ -214,9 +276,11 @@ def Compare_TwoModel(model, other_model, rounds=1000,plot=false):
         plt.rc('font', family='YouYuan')
         rounds_range = np.arange(1, rounds + 1)
         plt.figure(figsize=(12, 6))
-        plt.plot(rounds_range, all_true_scores, marker='o', linestyle='-', color='red', label='真实得分')
-        plt.plot(rounds_range, all_scores_1, marker='o', linestyle='-', color='blue', label='算法1 得分')
-        plt.plot(rounds_range, all_scores_2, marker='o', linestyle='-', color='green', label='算法2 得分')
+
+        # 绘制散点图
+        plt.scatter(rounds_range, all_true_scores, color='red', label='真实得分')  # 使用 scatter 绘制散点
+        plt.scatter(rounds_range, all_scores_1, color='blue', label='算法1 得分')
+        plt.scatter(rounds_range, all_scores_2, color='green', label='算法2 得分')
 
         plt.xlabel('测试轮次')
         plt.ylabel('得分')
@@ -229,106 +293,61 @@ def Compare_TwoModel(model, other_model, rounds=1000,plot=false):
 
 
 
+def genome(A,B):
+    best_genome = genome_loaded
+    move=Get_GA_Strategy(best_genome, A, B)
+    return move
 
-def genome_scoreonly(A,B):
-    score,_=testGeonme_with_given_A_B(A,B)
-    return score
+
 def DNN(A,B):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = load_model_from_memory("../trained/move_predictor.pth", device)
-    move,score=DNNpredict(A,B,model)
-    return score
-
-def DNN_Strategy(A,B):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = load_model_from_memory("../trained/move_predictor.pth", device)
     move,_=DNNpredict(A,B,model)
     return move
-def TransformerStrategy(A, B):
-    num_a_test = 6 # <--- 修改
-    num_b_test = 3
-    # 确保这些参数与训练时一致
-    d_model_test = 128
-    nhead_test = 4
-    num_layers_test = 3
-    dim_ff_test = 256
-    test_model = TransformerMovePredictor(
-        num_a=num_a_test, num_b=num_b_test, d_model=d_model_test,
-        nhead=nhead_test, num_encoder_layers=num_layers_test,
-        dim_feedforward=dim_ff_test
-    ).to(device)
 
-    model_path_test = "../trained/transformer_move_predictor_6x3.pth" # <--- 修改
-    test_model.load_state_dict(torch.load(model_path_test, map_location=device))
-    Strategy, _ = Transformer_predict(A, B, test_model, num_a=num_a_test, num_b=num_b_test)
-
-    return Strategy
-import io
-import logging
-
-# # 设置 logger
-# logger = logging.getLogger(__name__)
-# def load_model_from_memory_T(model_path, device):
-#     try:
-#         logger.info(f"Starting to load model from memory: {model_path}")
-#
-#         # 读取模型文件到内存
-#         with open(model_path, 'rb') as f:
-#             model_data = f.read()
-#
-#         # 将字节数据包装为 BytesIO 对象
-#         buffer = io.BytesIO(model_data)
-#         buffer.seek(0)  # 确保可以 seek
-#
-#         # 初始化模型实例（使用正确的模型类 TMovePredictor）
-#         model = TMovePredictor(input_size_A=6, input_size_B=3)
-#         logger.info(f"Model initialized: {model}")
-#
-#         # 加载模型的 state_dict
-#         state_dict = torch.load(buffer, map_location=device)  # 从 buffer 加载
-#         logger.info("State dict loaded successfully")
-#
-#         # 加载 state_dict 到模型
-#         model.load_state_dict(state_dict, strict=False)  # 使用 strict=False 来适应不同的模型结构
-#         logger.info(f"Model after loading: {model}")
-#
-#         model.to(device)
-#         model.eval()  # 设置为评估模式
-#         logger.info("Model loaded and set to evaluation mode")
-#
-#         return model
-#
-#     except Exception as e:
-#         logger.error(f"Error loading model: {e}")
-#         raise e
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-def Transformerscore(A, B):
+def Transformer(A, B):
+    # 加入专门预测低分的模型
     num_a_test = 6 # <--- 修改
     num_b_test = 3
     # 确保这些参数与训练时一致
-    d_model_test = 128
+    d_model_test = 256
     nhead_test = 4
     num_layers_test = 3
     dim_ff_test = 256
-    test_model = TransformerMovePredictor(
+
+    model1 = TransformerMovePredictor(
         num_a=num_a_test, num_b=num_b_test, d_model=d_model_test,
         nhead=nhead_test, num_encoder_layers=num_layers_test,
         dim_feedforward=dim_ff_test
     ).to(device)
 
-    model_path_test = "../trained/transformer_move_predictor_6x3.pth" # <--- 修改
-    test_model.load_state_dict(torch.load(model_path_test, map_location=device))
-    _, predicted_score = Transformer_predict(A, B, test_model, num_a=num_a_test, num_b=num_b_test)
+    model2= TransformerMovePredictor_assist(
+        num_a=num_a_test, num_b=num_b_test, d_model=d_model_test,
+        nhead=nhead_test, num_encoder_layers=num_layers_test,
+        dim_feedforward=dim_ff_test
+    ).to(device)
+    model_path_1 = "../trained/transformer_move_predictor_6x3.pth" # <--- 修改
+    model1.load_state_dict(torch.load(model_path_1, map_location=device))
+    move1, score1= Transformer_predict(A, B, model1, num_a=num_a_test, num_b=num_b_test)
 
-    return predicted_score
+    model_path_2 = "../trained/transformer_move_predictor_assist.pth"  # <--- 修改
+    model2.load_state_dict(torch.load(model_path_2, map_location=device))
+    move2, score2 = Transformer_predict_assist(A, B, model2, num_a=num_a_test, num_b=num_b_test)
+
+    if(score1<40 and score2>score1):
+        return move2
+
+    return move1
 
 
 
 def recursive(A,B):
-    score,_=recursive_strategy(A,B)
-    return score
+    score,strategy=recursive_strategy(A,B)
+    return score,strategy
 
+# 这个预测不了策略
 # def transformer_score(A,B):
 #     predicted_score=transformer_scoreonly(A, B, "../trained/seq2seq_model.pth")
 #     return predicted_score
@@ -336,10 +355,13 @@ def recursive(A,B):
 if __name__ == "__main__":
 
 
-# 显示图表的简易测试rounds=10
-#     Compare_TwoModel(genome_scoreonly,transformer_scoreonly,rounds=1000)
-#     A=[1,2,3,4,5,6]
-#     B=[1,2,3]
-#
-#     print(TDNN(A,B))
-    Compare_TwoModel(DNN,Transformerscore)
+
+    Compare_TwoModel(genome,Transformer,rounds=1000,plot=True)
+    # A=[7, 9, 5, 13, 3, 10]
+    # B=[7, 5, 5]
+    # A=[11, 5, 13, 10, 1, 12]
+    # B=[1, 9, 4]
+    # s=[[1, 0], [2, 0], [0, 0]]
+    # print(strategy_TrueScore(A,B,s))
+#     print(DNN(A,B))
+#     Compare_TwoModel(Transformerscore,Transformerscore)

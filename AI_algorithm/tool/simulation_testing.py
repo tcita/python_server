@@ -2,7 +2,7 @@ import torch
 
 from AI_algorithm.GA import Get_GA_Strategy
 
-from AI_algorithm.tool.CompareWithOther import DNN_Strategy, TransformerStrategy
+from AI_algorithm.tool.CompareWithOther import Transformer, DNN
 
 from AI_algorithm.tool.tool import deal_cards_tool, load_best_genome, simulate_insertion_tool
 
@@ -26,12 +26,12 @@ def DNNFormatChecking(DNNStrategy):
 
 def strategy_scoring(A, B, strategy):
 
-
-    score1, _, _, _,A  = simulate_insertion_tool(A, B[strategy[0][0]],  max(1, min(len(A), strategy[0][1])))
+    # min(len(A), strategy[0][1])是为了处理插入位置越界的情况
+    score1, _, _, _,A  = simulate_insertion_tool(A, B[strategy[0][0]],   min(len(A), strategy[0][1]))
     # print(f"1. 将 {B[strategy[0][0]]} 插入A<{strategy[0][1]}>号位  得分: {score1}    A变为{A}")
-    score2, _, _, _,A  = simulate_insertion_tool(A, B[strategy[1][0]],  max(1, min(len(A), strategy[1][1])))
+    score2, _, _, _,A  = simulate_insertion_tool(A, B[strategy[1][0]],   min(len(A), strategy[1][1]))
     # print(f"2. 将 {B[strategy[1][0]]} 插入A<{strategy[1][1]}>号位  得分: {score2}    A变为{A}")
-    score3, _, _, _,A  = simulate_insertion_tool(A, B[strategy[2][0]],  max(1, min(len(A), strategy[2][1])))
+    score3, _, _, _,A  = simulate_insertion_tool(A, B[strategy[2][0]],   min(len(A), strategy[2][1]))
     # print(f"3. 将 {B[strategy[2][0]]} 插入A<{strategy[2][1]}>号位  得分: {score3}    A变为{A}")
     # if(strategy[0][1]==strategy[1][1] and  strategy[0][1]!=1):
     #     print(f"A的初始值是{A}    B的初始值是{B}")
@@ -53,11 +53,11 @@ for i in range(100000):
 
     #
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    move=DNN_Strategy(A,B)
+    _,move=DNN(A,B)
     dnn=strategy_scoring(A,B,move)
 
 
-    TF_Strategy=TransformerStrategy(A,B)
+    _,TF_Strategy=Transformer(A,B)
     tr=strategy_scoring(A,B,TF_Strategy)
     # DNNFormatChecking(DNN_Strategy)
 

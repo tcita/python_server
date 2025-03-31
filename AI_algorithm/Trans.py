@@ -173,83 +173,122 @@ def prepare_data_transformer(sample: dict, num_a=6, num_b=3): # <--- 修改 num_
 
     return input_sequence, order_target, pos_target
 
+import signal
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import numpy as np
 
-# 修改 train_model 以使用新的固定长度
-def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/transformer_move_predictor_6x3.pth", # <--- 修改模型保存路径名
-                num_a=6, num_b=3): # <--- 明确设置 num_a=6
+# 定义全局变量
+stop_training = False
+
+def signal_handler(sig, frame):
+    global stop_training
+    print("\n检测到手动停止信号，准备保存当前模型...")
+    stop_training = True
+
+# 注册信号处理函数
+signal.signal(signal.SIGINT, signal_handler)
+
+
+def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/transformer_move_predictor_6x3.pth",
+                num_a=6, num_b=3):
     """
     训练 Transformer 模型 (针对 A=6, B=3)
+    允许手动终止训练 (`Ctrl+C`) 并保存当前进度
     """
-    # 模型参数 (可以根据需要调整)
-    d_model = 128
-    nhead = 4 # d_model=128 可以被 nhead=4 整除
+    global stop_training
+
+    d_model = 256
+    nhead = 4
     num_encoder_layers = 3
     dim_feedforward = 256
     dropout = 0.1
 
-    # 初始化模型时传入正确的 num_a, num_b
+    # 初始化模型
     model = TransformerMovePredictor(input_dim=1, d_model=d_model, nhead=nhead,
                                      num_encoder_layers=num_encoder_layers,
                                      dim_feedforward=dim_feedforward, dropout=dropout,
-                                     num_a=num_a, num_b=num_b).to(device) # <--- 传递 num_a=6
+                                     num_a=num_a, num_b=num_b).to(device)
 
     conditional_print("模型参数量:", sum(p.numel() for p in model.parameters() if p.requires_grad))
     conditional_print("模型是否在GPU上:", next(model.parameters()).is_cuda)
 
-    optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.01)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5)
+    optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)
 
     order_criterion = nn.CrossEntropyLoss().to(device)
     pos_criterion = nn.MSELoss().to(device)
 
     model.train()
 
-    for epoch in range(epochs):
-        total_loss = 0.0
-        batch_count = 0
-        np.random.shuffle(train_data)
+    try:
+        for epoch in range(epochs):
+            if stop_training:
+                break
 
-        for i in range(0, len(train_data), batch_size):
-            batch = train_data[i:i + batch_size]
-            inputs, order_targets, pos_targets = [], [], []
+            total_loss = 0.0
+            batch_count = 0
+            np.random.shuffle(train_data)
 
-            for sample in batch:
-                # 调用 prepare_data 时传递正确的 num_a, num_b
-                input_seq, order_tgt, pos_tgt = prepare_data_transformer(sample, num_a=num_a, num_b=num_b) # <--- 传递 num_a=6
-                if input_seq is None:
+            for i in range(0, len(train_data), batch_size):
+                if stop_training:
+                    break
+
+                batch = train_data[i:i + batch_size]
+                inputs, order_targets, pos_targets = [], [], []
+
+                for sample in batch:
+                    input_seq, order_tgt, pos_tgt = prepare_data_transformer(sample, num_a=num_a, num_b=num_b)
+                    if input_seq is None:
+                        continue
+                    inputs.append(input_seq)
+                    order_targets.append(order_tgt)
+                    pos_targets.append(pos_tgt)
+
+                if not inputs:
                     continue
-                inputs.append(input_seq)
-                order_targets.append(order_tgt)
-                pos_targets.append(pos_tgt)
 
-            if not inputs:
-                continue
+                inputs = torch.FloatTensor(np.array(inputs)).to(device)
+                order_targets = torch.LongTensor(np.array(order_targets)).to(device)
+                pos_targets = torch.FloatTensor(np.array(pos_targets)).to(device)
 
-            inputs = torch.FloatTensor(np.array(inputs)).to(device) # (batch, seq_len=9)
-            order_targets = torch.LongTensor(np.array(order_targets)).to(device) # (batch, num_b=3)
-            pos_targets = torch.FloatTensor(np.array(pos_targets)).to(device) # (batch, num_b=3)
+                optimizer.zero_grad()
+                order_logits, pos_preds = model(inputs)
 
-            optimizer.zero_grad()
-            order_logits, pos_preds = model(inputs)
-            # order_logits: (batch, 3, 3), pos_preds: (batch, 3)
+                order_loss = order_criterion(order_logits, order_targets)
+                pos_loss = pos_criterion(pos_preds, pos_targets)
+                loss = order_loss + pos_loss
 
-            order_loss = order_criterion(order_logits, order_targets)
-            pos_loss = pos_criterion(pos_preds, pos_targets)
-            loss = order_loss + pos_loss
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                optimizer.step()
 
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step()
+                total_loss += loss.item()
+                batch_count += 1
 
-            total_loss += loss.item()
-            batch_count += 1
+                # 动态调整学习率
+                if total_loss / batch_count > 1:
+                    # 当损失大于 1 时，学习率为 0.01
+                    new_lr = 0.001
+                else:
+                    # 当损失小于 1 时，学习率为 0.00005
+                    new_lr = 0.00005
 
-        scheduler.step()
-        avg_loss = total_loss / batch_count if batch_count > 0 else total_loss
-        print(f"Epoch {epoch+1}/{epochs}, Loss: {avg_loss:.4f}, LR: {scheduler.get_last_lr()[0]:.6f}")
+                # 更新优化器的学习率
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = new_lr
 
-    torch.save(model.state_dict(), model_path)
-    print(f"Transformer 模型 (6x3) 已保存至 {model_path}")
+            avg_loss = total_loss / batch_count if batch_count > 0 else total_loss
+            print(f"Epoch {epoch + 1}/{epochs}, Loss: {avg_loss:.4f}, LR: {new_lr:.6f}")
+
+    except KeyboardInterrupt:
+        print("\n训练手动中断，正在保存当前模型...")
+
+    finally:
+        # 确保无论发生什么情况，模型都会被保存
+        torch.save(model.state_dict(), model_path)
+        print(f"Transformer 模型已保存至 {model_path}")
+
     return model
 
 
@@ -263,7 +302,7 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3): # <--- 修改 num_a 默�
         if not set(A) & set(B) and len(B) == len(set(B)):
              print("快速路径：A、B无交集且B无重复，返回默认策略")
              # 返回的策略仍然是针对 B 中的 3 个元素
-             return [[0, 1], [1, 1], [2, 1]], 0 # 默认位置 1 可能需要调整
+             return [[0, 0], [1, 0], [2, 0]], 0 # 默认位置 1 可能需要调整
 
         if not isinstance(model, TransformerMovePredictor):
              raise ValueError(f"需要 TransformerMovePredictor 实例, 但得到 {type(model)}")
@@ -348,7 +387,7 @@ def train():
 
 
     # 调用 train_model 时传递固定长度，并使用新的模型路径
-    train_model(train_data, epochs=300, batch_size=64 ,
+    train_model(train_data, epochs=400, batch_size=1024,
                 model_path="./trained/transformer_move_predictor_6x3.pth", # 新路径名
                 num_a=fixed_num_a, num_b=fixed_num_b) # 传递 6 和 3
 

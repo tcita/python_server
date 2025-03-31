@@ -201,7 +201,7 @@ def DNNpredict(A, B, model):
     try:
         # 如果 A 和 B 没有交集，且 B 中没有重复元素，直接返回固定策略
         if not set(A) & set(B) and len(B) == len(set(B)):
-            return [[0, 1], [1, 1], [2, 1]], 0
+            return [[0, 0], [1, 0], [2, 0]], 0
 
         # 确保传入的 model 是 MovePredictor 实例
         if not isinstance(model, MovePredictor):

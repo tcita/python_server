@@ -10,18 +10,23 @@ from AI_algorithm.tool.tool import deal_cards_tool
 def generate_training_data(num_samples=50000):
     dataset = []
 
-    for _ in range(num_samples):
+    for i in range(num_samples):
 
         # 不应该使用无法得分的A,B训练
         while True:
             A, B = deal_cards_tool()  # 初始A, B   A, B 都是 list<int>
 
+            # 专门训练一个低分训练集
+            max_score, _ = recursive_strategy(A, B)
             # 检查 A 和 B 是否有任何重复的元素
-            if  set(A) & set(B):  # 如果 A 和 B 有任何重复元素
+            if  set(A) & set(B) and max_score<40:  # 如果 A 和 B 有任何重复元素
                 break  # 退出循环，继续处理这对 A, B
 
-        max_score, best_moves = recursive_strategy(A, B)
 
+
+
+        max_score, best_moves = recursive_strategy(A, B)
+        print(f"{i} of {num_samples}")
         # 提取已有的第一个元素
         existing_first_elements = {move[0] for move in best_moves}
 
@@ -31,13 +36,13 @@ def generate_training_data(num_samples=50000):
         # 填充 best_moves 至少 3 个子数组
         while len(best_moves) < 3:
             first_element = missing_first_elements.pop(0)  # 获取缺失的第一个元素
-            best_moves.append([first_element, 1])  # 组合 [缺失的元素, 1]
+            best_moves.append([first_element, 0])  # 组合 [缺失的元素, 0]
 
 
 
         dataset.append({"A": A, "B": B, "max_score": max_score, "best_moves": best_moves})
 
-    with open("json/data_raw.json", "w") as f:
+    with open("json/Low_Score.json", "w") as f:
         json.dump(dataset, f, indent=4)
 
 

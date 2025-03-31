@@ -1,12 +1,9 @@
 import random
-from functools import partial
-
 import numpy as np
 import time
 import pickle
 from multiprocessing import Pool
 
-from AI_algorithm.tool.tool import load_best_genome, modsummery
 
 
 # ---------------------------
