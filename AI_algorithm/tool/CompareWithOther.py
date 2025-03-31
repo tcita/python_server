@@ -323,24 +323,30 @@ def Transformer(A, B):
         dim_feedforward=dim_ff_test
     ).to(device)
 
-    model2= TransformerMovePredictor_assist(
-        num_a=num_a_test, num_b=num_b_test, d_model=d_model_test,
-        nhead=nhead_test, num_encoder_layers=num_layers_test,
-        dim_feedforward=dim_ff_test
-    ).to(device)
+    # model2= TransformerMovePredictor_assist(
+    #     num_a=num_a_test, num_b=num_b_test, d_model=d_model_test,
+    #     nhead=nhead_test, num_encoder_layers=num_layers_test,
+    #     dim_feedforward=dim_ff_test
+    # ).to(device)
     model_path_1 = "../trained/transformer_move_predictor_6x3.pth" # <--- 修改
     model1.load_state_dict(torch.load(model_path_1, map_location=device))
-    move1, score1= Transformer_predict(A, B, model1, num_a=num_a_test, num_b=num_b_test)
+    move1, _= Transformer_predict(A, B, model1, num_a=num_a_test, num_b=num_b_test)
 
-    model_path_2 = "../trained/transformer_move_predictor_assist.pth"  # <--- 修改
-    model2.load_state_dict(torch.load(model_path_2, map_location=device))
-    move2, score2 = Transformer_predict_assist(A, B, model2, num_a=num_a_test, num_b=num_b_test)
+    score1=strategy_TrueScore(A,B,move1)
+    best_genome = genome_loaded
 
-    if(score1<40 and score2>score1):
+    move2=Get_GA_Strategy(best_genome, A, B)
+    score2=strategy_TrueScore(A,B,move2)
+    # 专门预测低分的transformer模型
+    # if(score1<40 ):
+        # model_path_2 = "../trained/transformer_move_predictor_assist.pth"  # <--- 修改
+        # model2.load_state_dict(torch.load(model_path_2, map_location=device))
+        # move2, score2 = Transformer_predict_assist(A, B, model2, num_a=num_a_test, num_b=num_b_test)
+    if score2 > score1:
+        print(f"HI change {score1} into {score2}")
         return move2
-
-    return move1
-
+    else:
+        return move1
 
 
 def recursive(A,B):
