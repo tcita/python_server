@@ -199,10 +199,10 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
     """
     global stop_training
 
-    d_model = 256
-    nhead = 4
-    num_encoder_layers = 3
-    dim_feedforward = 256
+    d_model = 512
+    nhead = 8
+    num_encoder_layers = 4
+    dim_feedforward = 1024
     dropout = 0.1
 
     # 初始化模型
@@ -214,7 +214,7 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
     conditional_print("模型参数量:", sum(p.numel() for p in model.parameters() if p.requires_grad))
     conditional_print("模型是否在GPU上:", next(model.parameters()).is_cuda)
 
-    optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)
+    optimizer = optim.AdamW(model.parameters(), lr=0.0001, weight_decay=0.01)
 
     order_criterion = nn.CrossEntropyLoss().to(device)
     pos_criterion = nn.MSELoss().to(device)
@@ -268,11 +268,13 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
 
                 # 动态调整学习率
                 if total_loss / batch_count > 1:
-                    # 当损失大于 1 时，学习率为 0.01
-                    new_lr = 0.001
+                    # 当损失大于 1 时，保持高学习率 (保持原始学习率)
+                    new_lr = 0.0001
+                elif total_loss / batch_count < 1 and total_loss / batch_count > 0.75:
+                    # 当损失小于 1 时，降低学习率至小于 0.000005
+                    new_lr = 0.000005
                 else:
-                    # 当损失小于 1 时，学习率为 0.00005
-                    new_lr = 0.00005
+                    new_lr = 0.000001
 
                 # 更新优化器的学习率
                 for param_group in optimizer.param_groups:
@@ -387,7 +389,7 @@ def train():
 
 
     # 调用 train_model 时传递固定长度，并使用新的模型路径
-    train_model(train_data, epochs=400, batch_size=1024,
+    train_model(train_data, epochs=200, batch_size=1024,
                 model_path="./trained/transformer_move_predictor_6x3.pth", # 新路径名
                 num_a=fixed_num_a, num_b=fixed_num_b) # 传递 6 和 3
 

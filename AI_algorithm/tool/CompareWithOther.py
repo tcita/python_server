@@ -312,7 +312,7 @@ def Transformer(A, B):
     num_a_test = 6 # <--- 修改
     num_b_test = 3
     # 确保这些参数与训练时一致
-    d_model_test = 256
+    d_model_test = 512
     nhead_test = 4
     num_layers_test = 3
     dim_ff_test = 256
@@ -323,11 +323,11 @@ def Transformer(A, B):
         dim_feedforward=dim_ff_test
     ).to(device)
 
-    # model2= TransformerMovePredictor_assist(
-    #     num_a=num_a_test, num_b=num_b_test, d_model=d_model_test,
-    #     nhead=nhead_test, num_encoder_layers=num_layers_test,
-    #     dim_feedforward=dim_ff_test
-    # ).to(device)
+    model3= TransformerMovePredictor_assist(
+        num_a=num_a_test, num_b=num_b_test, d_model=d_model_test,
+        nhead=nhead_test, num_encoder_layers=num_layers_test,
+        dim_feedforward=dim_ff_test
+    ).to(device)
     model_path_1 = "../trained/transformer_move_predictor_6x3.pth" # <--- 修改
     model1.load_state_dict(torch.load(model_path_1, map_location=device))
     move1, _= Transformer_predict(A, B, model1, num_a=num_a_test, num_b=num_b_test)
@@ -338,13 +338,24 @@ def Transformer(A, B):
     move2=Get_GA_Strategy(best_genome, A, B)
     score2=strategy_TrueScore(A,B,move2)
     # 专门预测低分的transformer模型
-    # if(score1<40 ):
-        # model_path_2 = "../trained/transformer_move_predictor_assist.pth"  # <--- 修改
-        # model2.load_state_dict(torch.load(model_path_2, map_location=device))
-        # move2, score2 = Transformer_predict_assist(A, B, model2, num_a=num_a_test, num_b=num_b_test)
+    if(score1<40 ):
+        model_path_3 = "../trained/transformer_move_predictor_assist.pth"  # <--- 修改
+        model3.load_state_dict(torch.load(model_path_3, map_location=device))
+
     if score2 > score1:
-        print(f"HI change {score1} into {score2}")
-        return move2
+
+        move3, _ = Transformer_predict_assist(A, B, model3, num_a=num_a_test, num_b=num_b_test)
+
+
+        score3 = strategy_TrueScore(A, B, move3)
+        if score3 > score2:
+            print(f"HI move3")
+            print(f"普通Transformer得分：{score1}")
+            print(f"GA得分：{score2}")
+            print(f"辅助Transformer得分：{score3}")
+            return move3
+        else:
+            return move2
     else:
         return move1
 
