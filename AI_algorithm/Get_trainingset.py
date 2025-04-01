@@ -7,7 +7,7 @@ from AI_algorithm.brute_force import recursive_strategy
 from AI_algorithm.tool.tool import deal_cards_tool
 
 
-def generate_training_data(num_samples=50000):
+def generate_training_data(num_samples=100000):
     dataset = []
 
     for i in range(num_samples):
@@ -16,10 +16,11 @@ def generate_training_data(num_samples=50000):
         while True:
             A, B = deal_cards_tool()  # 初始A, B   A, B 都是 list<int>
 
-            # 专门训练一个低分训练集
-            max_score, _ = recursive_strategy(A, B)
+            # # 专门训练一个低分训练集
+            # max_score, _ = recursive_strategy(A, B)
             # 检查 A 和 B 是否有任何重复的元素
-            if  set(A) & set(B) and max_score<40:  # 如果 A 和 B 有任何重复元素
+            if  (set(A) & set(B) ):
+                    # and max_score<40):  # 如果 A 和 B 有任何重复元素
                 break  # 退出循环，继续处理这对 A, B
 
 
@@ -42,7 +43,7 @@ def generate_training_data(num_samples=50000):
 
         dataset.append({"A": A, "B": B, "max_score": max_score, "best_moves": best_moves})
 
-    with open("json/Low_Score.json", "w") as f:
+    with open("json/data_raw.json", "w") as f:
         json.dump(dataset, f, indent=4)
 
 

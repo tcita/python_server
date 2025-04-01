@@ -3,525 +3,475 @@ import numpy as np
 import time
 import pickle
 from multiprocessing import Pool
-import os  # Added for directory creation
+import os  # 用于创建目录
 
 
 # ---------------------------
-# 游戏规则函数 (根据新规则调整和确认)
+# 游戏规则与模拟函数
 # ---------------------------
 
-# 初始化一副牌（1到13，4种花色） - OK
+# 初始化一副牌（1到13，4种花色）
 def init_deck():
-    """Initializes a standard 52-card deck (4 suits, values 1-13)."""
+    """创建一副标准的52张扑克牌（点数1-13，每种点数4张）"""
     return [i for i in range(1, 14) for _ in range(4)]
 
 
-# 洗牌并发牌 - A玩家6张(唯一), B玩家3张 - OK (符合规则)
+# 洗牌并发牌，A玩家6张（唯一），B玩家3张
 def deal_cards():
-    """Deals 6 unique cards to A and 3 cards to B from a shuffled deck."""
+    """
+    洗牌并分发手牌。
+    A获得6张不同的牌。
+    B获得3张牌。
+    确保A中的牌是唯一的。
+    """
     deck = init_deck()
     random.shuffle(deck)
 
     A = []
-    a_unique_check = set()
-    # Draw unique cards for A
-    while len(A) < 6 and deck:  # Ensure deck has cards
-        card = deck.pop()
-        if card not in a_unique_check:
-            a_unique_check.add(card)
+    a_unique_checker = set()  # 用于快速检查A中是否已有某张牌
+    deck_idx = 0  # 当前从牌堆抽到的索引
+
+    # 抽取A的牌，确保唯一性
+    while len(A) < 6 and deck_idx < len(deck):
+        card = deck[deck_idx]
+        if card not in a_unique_checker:
             A.append(card)
-        # If we can't find 6 unique cards (highly unlikely with 52 cards), something is wrong
-        if not deck and len(A) < 6:
-            print(f"Warning: Could only deal {len(A)} unique cards to A. Deck depleted early.")
+            a_unique_checker.add(card)
+        deck_idx += 1
 
-    # Draw 3 cards for B from remaining deck
-    B = []
-    for _ in range(3):
-        if deck:  # Check if deck is not empty
-            B.append(deck.pop())
-        else:
-            print(f"Warning: Could only deal {len(B)} cards to B. Deck depleted.")
-            break
+    # 健壮性检查：如果牌堆不足以抽出6张唯一的牌（理论上不可能发生）
+    if len(A) < 6:
+        raise Exception(f"无法为A抽取6张唯一的牌, 只抽到了 {len(A)} 张。")
 
-    # print(f"Dealt A: {A}, B: {B}") # Debug print
+    # 从牌堆剩余部分抽取B的牌
+    remaining_deck = deck[deck_idx:]
+    if len(remaining_deck) < 3:
+        raise Exception(f"牌堆剩余牌数不足 ({len(remaining_deck)}) 为B抽取3张牌。")
+
+    B = [remaining_deck.pop(random.randrange(len(remaining_deck))) for _ in range(3)]  # 从剩余牌中随机抽取3张给B
+
     return A, B
 
 
-# 模拟插入、匹配、得分、移除的核心逻辑 - 保留原实现，它符合描述中的匹配和得分规则
+# 模拟将牌x插入A的pos位置，并计算得分和更新A
 def simulate_insertion(A, x, pos):
     """
-    Simulates inserting card x at position pos in A, calculates score, and returns results.
-    Finds the nearest match (left or right), breaks distance ties with interval sum.
+    模拟将牌 x 插入到列表 A 的指定位置 pos (0-based index)。
+    计算得分，更新列表 A。
+
     Args:
-        A (list): Player A's current hand.
-        x (int): Card from B to insert.
-        pos (int): Position index where x is inserted (0 to len(A)).
+        A (list): 玩家A当前的手牌。
+        x (int): 要插入的牌。
+        pos (int): 插入的位置索引 (0 <= pos <= len(A))。
 
     Returns:
-        tuple: (score, removal_length, new_length, match_found, new_A)
-               score: Score obtained from this insertion (sum of removed interval).
-               removal_length: Number of cards removed.
-               new_length: Length of A after removal.
-               match_found: 1 if a match led to removal, 0 otherwise.
-               new_A: Player A's hand after insertion and potential removal.
+        tuple: (得分, 移除的牌数, 新A的长度, 是否找到匹配(1或0), 新的A列表)
     """
     candidate_A = A.copy()
 
-    # Insert x at the specified position (0 to len(A))
+    # 插入 x 到指定位置
+    # pos=0 表示插入到最前面, pos=len(A) 表示插入到最后面
     candidate_A.insert(pos, x)
 
-    # Search for the nearest matching element y == x
     left_idx, right_idx = None, None
-    min_left_dist, min_right_dist = float('inf'), float('inf')
 
-    # Search left (indices < pos)
+    # 向左搜索匹配的牌 x
     for i in range(pos - 1, -1, -1):
         if candidate_A[i] == x:
             left_idx = i
-            min_left_dist = pos - i
-            break  # Found nearest left match
+            break
 
-    # Search right (indices > pos)
+    # 向右搜索匹配的牌 x
     for j in range(pos + 1, len(candidate_A)):
         if candidate_A[j] == x:
             right_idx = j
-            min_right_dist = j - pos
-            break  # Found nearest right match
+            break
 
-    # Determine which match to use (if any)
-    chosen_match_idx = None
-    if left_idx is not None and right_idx is not None:  # Matches on both sides
-        if min_left_dist < min_right_dist:
-            chosen_match_idx = left_idx
-        elif min_right_dist < min_left_dist:
-            chosen_match_idx = right_idx
-        else:  # Equidistant matches, use interval sum tie-breaker
-            left_interval = candidate_A[left_idx: pos + 1]
-            right_interval = candidate_A[pos: right_idx + 1]
-            if sum(left_interval) >= sum(right_interval):  # Prioritize left if sums are equal too
-                chosen_match_idx = left_idx
-            else:
-                chosen_match_idx = right_idx
-    elif left_idx is not None:
-        chosen_match_idx = left_idx
-    elif right_idx is not None:
-        chosen_match_idx = right_idx
-    else:
-        # No match found
+    # 如果没有找到匹配
+    if left_idx is None and right_idx is None:
         return 0, 0, len(candidate_A), 0, candidate_A
 
-    # Calculate score and remove interval based on the chosen match
-    if chosen_match_idx < pos:  # Matched left
-        start, end = chosen_match_idx, pos
-    else:  # Matched right
-        start, end = pos, chosen_match_idx
+    # 选择匹配区间
+    start, end = -1, -1
+    if left_idx is not None and right_idx is not None:
+        # 如果左右都有匹配，选择距离更近的
+        # 如果距离相等，选择区间和更大的
+        left_distance = pos - left_idx
+        right_distance = right_idx - pos
+        if left_distance < right_distance:
+            start, end = left_idx, pos
+        elif right_distance < left_distance:
+            start, end = pos, right_idx
+        else:
+            left_sum = sum(candidate_A[left_idx: pos + 1])
+            right_sum = sum(candidate_A[pos: right_idx + 1])
+            if left_sum >= right_sum:
+                start, end = left_idx, pos
+            else:
+                start, end = pos, right_idx
+    elif left_idx is not None:  # 只有左匹配
+        start, end = left_idx, pos
+    else:  # 只有右匹配 (right_idx is not None)
+        start, end = pos, right_idx
 
+    # 计算得分并移除区间
     removal_interval = candidate_A[start: end + 1]
     score = sum(removal_interval)
-    removal_length = len(removal_interval)
-
-    # Create the new A by removing the interval
     new_A = candidate_A[:start] + candidate_A[end + 1:]
-    new_length = len(new_A)
-    match_found = 1
 
-    return score, removal_length, new_length, match_found, new_A
+    return score, len(removal_interval), len(new_A), 1, new_A
 
 
 # ---------------------------
-# 遗传算法相关函数 (根据新规则调整)
+# 遗传算法相关函数
 # ---------------------------
 
-# REMOVED: get_best_insertion_score, get_updated_A_after_insertion (no longer needed)
-# REMOVED: calculate_future_score (no longer applicable due to random B order)
-
-# 基于基因组选择插入位置 (已移除 future_score)
+# 根据基因组选择最优插入位置 (简化版)
 def genome_choose_insertion(genome, A, x):
     """
-    Chooses the best insertion position for card x into hand A based on the genome evaluation.
-    The genome is now length 4, evaluating [score, removal_length, new_length, match_found].
+    使用基因组评估并选择牌 x 插入 A 的最佳位置。
+    评估基于当前步骤的直接结果。
 
     Args:
-        genome (list): The length-4 genome (weights).
-        A (list): Player A's current hand.
-        x (int): The card from B to be inserted.
+        genome (list): 遗传算法的基因组（权重列表，长度为4）。
+        A (list): 玩家A当前的手牌。
+        x (int): 要插入的牌。
 
     Returns:
-        tuple: (best_pos, score, new_A)
-               best_pos: The chosen insertion position index.
-               score: The score obtained from inserting at best_pos.
-               new_A: Player A's hand after inserting at best_pos and potential removal.
+        tuple: (最佳插入位置, 该位置得分, 更新后的A列表)
     """
     best_value = -float('inf')
-    best_move_info = None  # To store (pos, score, new_A) for the best move
+    best_move = None  # (评估值, 位置, 得分, 新A列表)
+    possible_moves = []
 
-    possible_moves = []  # Store results for all potential positions
-
-    # Iterate through all len(A) + 1 possible insertion positions
+    # 遍历所有可能的插入位置 (从0到len(A))
     for pos in range(len(A) + 1):
-        # Simulate the insertion for this position
-        score, removal_length, new_length, match_found, resultant_A = simulate_insertion(A, x, pos)
+        # 模拟插入，获取结果
+        score, removal_length, new_length, match_found, new_A = simulate_insertion(A, x, pos)
 
-        # Create the feature vector (Length 4 NOW)
+        # 构建特征向量 (4个特征)
+        # 特征: [当前得分, 移除牌数, 新手牌长度, 是否找到匹配]
         features = np.array([score, removal_length, new_length, match_found], dtype=float)
 
-        # Calculate the value using the genome
+        # 使用基因组（权重）计算该移动的评估值
         value = np.dot(genome, features)
 
-        # Store the outcome for this position
-        possible_moves.append({'value': value, 'pos': pos, 'score': score, 'new_A': resultant_A})
+        possible_moves.append((value, pos, score, new_A))
 
-    # Handle the case where A might be empty initially or becomes empty
+    # 如果没有可能的移动（只可能发生在初始A为空时，但simulate_insertion已处理）
+    # 按理说 possible_moves 不会为空
     if not possible_moves:
-        # This should only happen if A was empty. The loop range(0, 1) runs once for pos=0.
-        # simulate_insertion handles inserting into empty A correctly.
-        # Let's ensure we handle the very first insertion gracefully if A starts empty.
-        if not A:
-            score, _, _, _, resultant_A = simulate_insertion(A, x, 0)
-            # Return position 0, score, and the new A (which just contains x)
-            return 0, score, resultant_A
-        else:
-            # This state should theoretically not be reached if A is not empty.
-            # If it were, it implies no valid positions, which contradicts range(len(A)+1).
-            # As a fallback, maybe just insert at the end with 0 score? Or raise error?
-            # Let's trust simulate_insertion and the loop logic. If possible_moves is empty
-            # when A is not, something fundamental is wrong.
-            # For robustness, let's default to inserting at end if this unexpected case occurs.
-            print(f"Warning: possible_moves list empty unexpectedly for A={A}, x={x}. Defaulting.")
-            new_A = A.copy()
-            new_A.append(x)
-            return len(A), 0, new_A
+        # 作为备用方案，如果 A 为空，则默认插入在位置0
+        # 但 simulate_insertion(A=[], x, 0) 会返回有效结果，所以这里理论上不会执行
+        print(f"警告: A={A}, x={x} 时没有找到可能的移动?")
+        score, _, _, _, new_A = simulate_insertion(A, x, 0)
+        return 0, score, new_A  # 默认返回插入到位置0
 
-    # Choose the move with the highest calculated 'value'
-    best_move = max(possible_moves, key=lambda move: move['value'])
+    # 选择评估值最高的移动
+    best_move = max(possible_moves, key=lambda move: move[0])
 
-    # Return the best position, the actual score from that move, and the resulting A
-    return best_move['pos'], best_move['score'], best_move['new_A']
+    # 提取最佳移动的信息
+    _, best_pos, best_score, best_new_A = best_move
+    return best_pos, best_score, best_new_A
 
 
-# 模拟一轮完整游戏 (B的顺序随机化)
+# 模拟一轮完整的游戏 (处理B中的所有牌)
 def simulate_round(genome):
-    """Simulates a single round of the game with shuffled B order."""
-    A, B = deal_cards()
-    if not B:  # Handle edge case where B couldn't be fully dealt
-        return 0
+    """
+    模拟一轮完整的游戏。
+    发牌 -> 随机打乱B -> 依次处理B中的牌 -> 计算总分。
+
+    Args:
+        genome (list): 用于决策的基因组。
+
+    Returns:
+        int: 这一轮的总得分。
+    """
+    try:
+        A_initial, B_initial = deal_cards()
+    except Exception as e:
+        print(f"发牌时出错: {e}")
+        return 0  # 返回0分或者其他错误处理
+
+    A_current = A_initial.copy()
+    B_shuffled = B_initial.copy()
+    random.shuffle(B_shuffled)  # *** 关键：随机打乱B的处理顺序 ***
 
     round_score = 0
-    # IMPORTANT: Shuffle B's order for this specific round simulation
-    shuffled_B = random.sample(B, len(B))
-
-    current_A = A.copy()  # Use a copy of A that updates within the round
-
-    for x in shuffled_B:
-        # Genome chooses insertion based on current A and card x
-        # Note: We don't need lookahead (remaining_B) anymore
-        pos, score, current_A = genome_choose_insertion(genome, current_A, x)
-        round_score += score
-        # current_A is implicitly updated for the next iteration
+    # 按随机顺序处理B中的每张牌
+    for card_x in B_shuffled:
+        # 使用基因组选择最佳插入位置并更新A
+        pos, score, A_current = genome_choose_insertion(genome, A_current, card_x)
+        round_score += score  # 累加得分
 
     return round_score
 
 
-# 评估基因组适应度 - OK (using mean/median combo)
+# 评估单个基因组的适应度
 def evaluate_genome(genome, num_rounds=1000):
-    """Evaluates a genome's fitness by simulating many rounds."""
-    # Ensure genome has the correct length (4)
-    if len(genome) != 4:
-        print(f"Error: Genome length is {len(genome)}, expected 4. Returning low fitness.")
-        return -float('inf')  # Penalize incorrect genomes
+    """
+    通过多次模拟游戏来评估一个基因组的适应度。
 
+    Args:
+        genome (list): 要评估的基因组。
+        num_rounds (int): 模拟的游戏轮数。
+
+    Returns:
+        float: 该基因组的平均得分（适应度）。
+    """
     scores = [simulate_round(genome) for _ in range(num_rounds)]
-    if not scores: return 0  # Handle case where no rounds could be played
-
-    # Using median and mean might be sensitive to outliers if scores vary wildly.
-    # Consider adjusting weights or using only mean/median if results seem unstable.
-    median_score = np.median(scores)
-    mean_score = np.mean(scores)
-
-    # Fitness combines robustness (median) and average performance (mean)
-    fitness = 0.7 * median_score + 0.3 * mean_score
+    # 使用平均分作为适应度，更标准
+    fitness = np.mean(scores)
+    # 原来的方法：fitness = np.median(scores) * 0.7 + np.mean(scores) * 0.3
     return fitness
 
 
-# 使用多进程评估 - OK
+# 使用多进程并行评估种群中所有基因组的适应度
 def evaluate_genomes_with_processes(population, num_rounds=1000, num_processes=8):
-    """Evaluates a population of genomes in parallel."""
-    # Make sure num_processes is reasonable
-    num_processes = min(num_processes, os.cpu_count())
-    try:
-        with Pool(processes=num_processes) as pool:
-            # Create argument tuples for starmap
-            tasks = [(genome, num_rounds) for genome in population]
-            fitnesses = pool.starmap(evaluate_genome, tasks)
-        return fitnesses
-    except Exception as e:
-        print(f"Error during multiprocessing evaluation: {e}")
-        # Fallback to serial evaluation if pooling fails
-        print("Falling back to serial evaluation...")
-        return [evaluate_genome(genome, num_rounds) for genome in population]
+    """使用多进程并行计算种群中每个基因组的适应度。"""
+    # 确保进程数合理
+    import multiprocessing
+    max_proc = multiprocessing.cpu_count()
+    num_processes = min(num_processes, max_proc)
+    print(f"使用 {num_processes} 个进程进行评估...")
+
+    with Pool(processes=num_processes) as pool:
+        # starmap 用于传递多个参数给 evaluate_genome
+        fitnesses = pool.starmap(evaluate_genome, [(genome, num_rounds) for genome in population])
+    return fitnesses
 
 
-# 遗传算法主过程 (使用长度为4的基因组)
-def genetic_algorithm(pop_size=100, generations=50, num_rounds=500,  # Adjusted defaults for potentially faster runs
-                      elitism_ratio=0.1, tournament_size=3, mutation_rate_initial=0.3,
-                      mutation_rate_final=0.05, mutation_strength=0.5, num_processes=8):
+# 遗传算法主过程
+def genetic_algorithm(pop_size=1000, generations=60, num_rounds=1000, elitism_ratio=0.1, tournament_size=3,
+                      num_processes=8):
     """
-    Runs the genetic algorithm to find the best genome (length 4).
+    执行遗传算法来优化游戏策略基因组。
+
+    Args:
+        pop_size (int): 种群大小。
+        generations (int): 迭代的代数。
+        num_rounds (int): 每代评估基因组时模拟的游戏轮数。
+        elitism_ratio (float): 精英选择比例。
+        tournament_size (int): 锦标赛选择的大小。
+        num_processes (int): 用于并行评估的进程数。
+
+    Returns:
+        list: 找到的最佳基因组。
     """
     start_time = time.time()
 
-    # Initialize population with length-4 genomes
+    # 初始化种群，每个基因组是长度为4的随机权重列表 (-1 到 1)
     population = [[random.uniform(-1, 1) for _ in range(4)] for _ in range(pop_size)]
 
-    best_fitness_history, avg_fitness_history = [], []
-    best_genome_overall, best_fitness_overall = None, -float('inf')
+    best_fitness_history = []
+    avg_fitness_history = []
+    best_genome_overall = None
+    best_fitness_overall = -float('inf')
 
-    elitism_count = int(elitism_ratio * pop_size)
-
-    print(f"Starting GA: Pop Size={pop_size}, Generations={generations}, Rounds/Eval={num_rounds}, Features=4")
+    elitism_count = int(elitism_ratio * pop_size)  # 精英数量
 
     for gen in range(generations):
+        print(f"\n--- 第 {gen + 1}/{generations} 代 ---")
+
+        # 1. 评估当前种群所有个体的适应度
         gen_start_time = time.time()
-
-        # Evaluate fitness of the current population
         fitnesses = evaluate_genomes_with_processes(population, num_rounds, num_processes)
+        gen_eval_time = time.time() - gen_start_time
+        print(f"评估耗时: {gen_eval_time:.2f} 秒")
 
+        # 记录当前代的最佳和平均适应度
         gen_best_fitness = max(fitnesses)
         gen_avg_fitness = np.mean(fitnesses)
-        best_idx_gen = fitnesses.index(gen_best_fitness)
-
         best_fitness_history.append(gen_best_fitness)
         avg_fitness_history.append(gen_avg_fitness)
 
-        # Update overall best if current generation is better
+        # 更新全局最佳基因组
+        current_best_idx = fitnesses.index(gen_best_fitness)
         if gen_best_fitness > best_fitness_overall:
             best_fitness_overall = gen_best_fitness
-            best_genome_overall = population[best_idx_gen][:]  # Store a copy
-            print(
-                f"*** New Best Overall Fitness: {best_fitness_overall:.4f} (Genome: {np.round(best_genome_overall, 4)}) ***")
+            best_genome_overall = population[current_best_idx]
+            print(f"*** 新的全局最佳适应度: {best_fitness_overall:.4f} ***")
 
-        gen_time = time.time() - gen_start_time
-        print(
-            f"Generation {gen + 1}/{generations}: Best Fitness = {gen_best_fitness:.4f}, Avg Fitness = {gen_avg_fitness:.4f}, Time: {gen_time:.2f}s")
+        print(f"当前代最佳适应度: {gen_best_fitness:.4f}")
+        print(f"当前代平均适应度: {gen_avg_fitness:.4f}")
+        print(f"当前代最佳基因组: {population[current_best_idx]}")
 
-        # --- Selection ---
-        # Sort population by fitness (descending)
+        # 2. 选择 (Selection)
+        # 按适应度排序，方便选出精英
         sorted_indices = sorted(range(pop_size), key=lambda k: fitnesses[k], reverse=True)
         sorted_population = [population[i] for i in sorted_indices]
 
-        # Elitism: Carry over the top individuals
+        # 精英主义：直接保留适应度最高的个体
         elites = sorted_population[:elitism_count]
 
-        # Tournament Selection for the rest
-        selected_for_breeding = []
-        num_to_select = pop_size - elitism_count
-        for _ in range(num_to_select):
-            # Select participants for the tournament
-            tournament_indices = random.sample(range(pop_size), tournament_size)
-            # Find the winner (highest fitness) within the tournament
-            winner_idx = max(tournament_indices, key=lambda i: fitnesses[i])
-            selected_for_breeding.append(population[winner_idx])
+        # 锦标赛选择：为下一代选择父母
+        selected_parents = []
+        for _ in range(pop_size - elitism_count):  # 需要产生这么多后代
+            # 随机选出 tournament_size 个个体进行比较
+            tournament_contenders_indices = random.sample(range(pop_size), tournament_size)
+            # 选出其中适应度最高的作为父母
+            winner_idx = max(tournament_contenders_indices, key=lambda i: fitnesses[i])
+            selected_parents.append(population[winner_idx])
 
-        # --- Reproduction ---
-        next_population = elites[:]  # Start next generation with elites
-
-        # Crossover and Mutation
+        # 3. 交叉 (Crossover)
+        next_population = elites.copy()  # 下一代从精英开始
         while len(next_population) < pop_size:
-            parent1, parent2 = random.sample(selected_for_breeding, 2)
-
-            # Crossover (Average) - Keep it simple for now
-            crossover_prob = 0.7
+            # 从选出的父母中随机选两个
+            parent1, parent2 = random.sample(selected_parents, 2)
             child = []
-            for p1_gene, p2_gene in zip(parent1, parent2):
-                if random.random() < crossover_prob:
-                    # Blend genes (average)
-                    child.append((p1_gene + p2_gene) / 2)
+            # 对基因组的每个位置进行处理
+            for i in range(4):  # 基因组长度为4
+                # 70%概率取父母平均值（混合），30%概率直接继承parent1 (也可改为继承parent2或随机选一)
+                if random.random() < 0.7:
+                    child.append((parent1[i] + parent2[i]) / 2.0)
                 else:
-                    # Inherit from one parent (e.g., parent1)
-                    child.append(p1_gene)
+                    child.append(parent1[i])
+            next_population.append(child)
 
-            # Mutation (Gaussian, with decaying rate)
-            current_mutation_rate = max(mutation_rate_final, mutation_rate_initial - (gen / generations) * (
-                        mutation_rate_initial - mutation_rate_final))
-            mutated_child = []
-            for gene in child:
-                if random.random() < current_mutation_rate:
-                    mutation = random.gauss(0, mutation_strength)
-                    mutated_child.append(gene + mutation)
-                else:
-                    mutated_child.append(gene)
+        # 4. 变异 (Mutation)
+        # 变异率随代数增加而降低 (可选策略)
+        mutation_rate = max(0.05, 0.2 - (gen / generations) * 0.15)
+        print(f"当前代变异率: {mutation_rate:.3f}")
 
-            # Optional: Clamp gene values if they stray too far (e.g., [-2, 2])
-            # mutated_child = [max(-2.0, min(2.0, gene)) for gene in mutated_child]
+        for i in range(elitism_count, pop_size):  # 不对精英进行变异
+            genome = next_population[i]
+            for j in range(4):  # 遍历基因组每个基因
+                if random.random() < mutation_rate:
+                    # 添加小的随机扰动（高斯分布）
+                    genome[j] += random.gauss(0, 0.3)  # 标准差可以调整
+                    # 可选：限制基因值范围，例如 [-1, 1] 或 [-2, 2]
+                    genome[j] = max(-2.0, min(2.0, genome[j]))  # 限制在[-2, 2]
+            next_population[i] = genome
 
-            next_population.append(mutated_child)
+        # 更新种群为下一代
+        population = next_population
 
-        population = next_population  # Update population for the next generation
-
+    # 遗传算法结束
     end_time = time.time()
-    print(f"\nGA Finished. Total Execution Time: {end_time - start_time:.2f} seconds")
-    print(f"Best Genome Found: {np.round(best_genome_overall, 5)}")
-    print(f"Best Fitness Achieved: {best_fitness_overall:.4f}")
+    total_time = end_time - start_time
+    print(f"\n--- 遗传算法结束 ---")
+    print(f"总耗时: {total_time:.2f} 秒 ({total_time / 60:.2f} 分钟)")
+    print(f"找到的最佳适应度: {best_fitness_overall:.4f}")
+    print(f"对应的最佳基因组: {best_genome_overall}")
+
+    # 可以绘制适应度曲线 (需要 matplotlib)
+    # import matplotlib.pyplot as plt
+    # plt.plot(best_fitness_history, label="Best Fitness")
+    # plt.plot(avg_fitness_history, label="Average Fitness")
+    # plt.xlabel("Generation")
+    # plt.ylabel("Fitness (Average Score)")
+    # plt.legend()
+    # plt.title("Fitness Evolution over Generations")
+    # plt.savefig("fitness_evolution.png") # 保存图像
+    # plt.show()
 
     return best_genome_overall
 
 
 # ---------------------------
-# Utility and Main Execution
+# 模型保存与应用
 # ---------------------------
 
-def save_best_genome(best_genome, filename="trained/best_genome_v2.pkl"):
-    """Saves the best genome to a pickle file."""
-    # Ensure the directory exists
+def save_best_genome(best_genome, filename="trained/optimized_genome_v2.pkl"):
+    """将找到的最佳基因组保存到文件。"""
+    # 确保目录存在
     os.makedirs(os.path.dirname(filename), exist_ok=True)
-    try:
-        with open(filename, 'wb') as file:
-            pickle.dump(best_genome, file)
-        print(f"Best genome saved to {filename}")
-    except Exception as e:
-        print(f"Error saving genome to {filename}: {e}")
+    with open(filename, 'wb') as file:
+        pickle.dump(best_genome, file)
+    print(f"最佳基因组已保存到: {filename}")
 
 
-def load_best_genome(filename="trained/best_genome_v2.pkl"):
-    """Loads a genome from a pickle file."""
+def load_best_genome2(filename="trained/optimized_genome_v2.pkl"):
+    """从文件加载最佳基因组。"""
+    if not os.path.exists(filename):
+        print(f"错误: 找不到基因组文件 {filename}")
+        return None
     try:
         with open(filename, 'rb') as file:
-            genome = pickle.load(file)
-        print(f"Genome loaded from {filename}")
-        # Add a check for genome length
-        if len(genome) != 4:
-            print(f"Warning: Loaded genome has length {len(genome)}, expected 4.")
-        return genome
-    except FileNotFoundError:
-        print(f"Error: Genome file not found at {filename}")
-        return None
+            best_genome = pickle.load(file)
+        print(f"从 {filename} 加载基因组成功: {best_genome}")
+        return best_genome
     except Exception as e:
-        print(f"Error loading genome from {filename}: {e}")
+        print(f"加载基因组时出错: {e}")
         return None
 
 
-# 展示策略在一个给定牌局上的执行过程 (使用随机B顺序)
-# (确保其他函数如 init_deck, deal_cards, simulate_insertion, genome_choose_insertion,
-#  genetic_algorithm, save_best_genome, load_best_genome 等保持不变，
-#  特别是 genome_choose_insertion 确认是接收长度为4的genome且不依赖remaining_B)
-
-def Get_GA_Strategy(best_genome, A_orig, B_orig):
+def Get_GA_Strategy2(best_genome, A_orig, B_orig):
     """
-    Demonstrates the strategy for a given hand A and B, using one random B order.
-    Outputs the strategy as a list of (original_B_index, chosen_pos) tuples,
-    ordered by the random processing sequence.
+    使用最佳基因组，为给定的初始手牌A和B（按原始顺序处理B）
+    演示决策过程并返回策略步骤。
 
     Args:
-        best_genome (list): The trained (length-4) genome.
-        A_orig (list): Initial hand A.
-        B_orig (list): Initial hand B.
+        best_genome (list): 训练好的最佳基因组。
+        A_orig (list): 初始手牌A。
+        B_orig (list): 初始手牌B (将按此列表顺序处理)。
 
     Returns:
-        dict: Contains the strategy log (list of tuples) and total score for this run.
-              Returns None if inputs are invalid.
+        list: 包含策略步骤的列表，格式为 [(b_index, insert_pos, card_value), ...]
     """
-    if not best_genome or len(best_genome) != 4:
-        print("Error: Invalid or missing genome.")
-        return None
+    if best_genome is None:
+        print("错误：基因组未提供或加载失败。")
+        return []
 
-    if not B_orig:
-        print("Initial B is empty, no moves to demonstrate.")
-        return {"strategy_log": [], "total_score": 0}
-
-    A = A_orig.copy()
-    B = B_orig.copy() # Keep a copy if needed, though B_orig is used mainly
-
-    # 1. Create list of (original_index, card_value) pairs from B_orig
-    indexed_B = list(enumerate(B_orig)) # e.g., [(0, 9), (1, 5), (2, 2)] for B=[9, 5, 2]
-
-    # 2. Shuffle this list of pairs to get the random processing order
-    shuffled_indexed_B = random.sample(indexed_B, len(indexed_B))
-    # e.g., could be [(2, 2), (0, 9), (1, 5)]
+    A_current = A_orig.copy()
+    B_to_process = B_orig.copy()  # 使用传入的B顺序
 
     round_score = 0
-    num_moves = 0
-    strategy = []  # To store (original_B_index, chosen_pos) tuples
-    detailed_log = [] # Optional: For more verbose logging
-
-
-    processing_order_cards = [card for idx, card in shuffled_indexed_B]
-
-
-    current_A = A # Use a copy that updates through the process
-
-    # 3. Iterate through the shuffled pairs
-    for move_num, (original_index, card_value) in enumerate(shuffled_indexed_B):
-
-
-        # Genome chooses the best insertion position based on current A and the card's value
-        pos, score, current_A = genome_choose_insertion(best_genome, current_A, card_value)
+    strategy_steps = []  # 存储策略 [(b_index, position, card_value)]
 
 
 
-        # 4. Append (original_index, pos) to the strategy list
-        strategy.append((original_index, pos))
+    # 按照 B_to_process 的顺序处理每一张牌
+    for i, card_x in enumerate(B_to_process):
 
 
+        # 使用基因组选择最佳插入位置
+        pos, score, A_next = genome_choose_insertion(best_genome, A_current, card_x)
 
+
+        # 累加得分并更新A的状态
         round_score += score
-        num_moves += 1
+        A_current = A_next  # 更新A用于下一步决策
+
+        # 记录这一步的策略
+        strategy_steps.append((i, pos))
 
 
 
-    # Return both the simple strategy list and the total score
-    return strategy
+    return strategy_steps
 
-# --- Example Usage (within if __name__ == "__main__": block) ---
-# (Assuming best_genome is loaded or trained)
-# if loaded_genome:
-#     print("\nRunning demonstration with a sample deal...")
-#     test_A, test_B = deal_cards()
-#     while not test_B:
-#          print("B was empty, dealing again for demo...")
-#          test_A, test_B = deal_cards()
-#
-#     # Run the corrected demonstration function
-#     demo_result = Get_GA_Strategy(loaded_genome, test_A, test_B)
-#     if demo_result:
-#         # You can access the strategy list like this:
-#         final_strategy_list = demo_result['strategy_log']
-#         print(f"\nExtracted Strategy List for potential use: {final_strategy_list}")
+
+# ---------------------------
+# 主程序入口
+# ---------------------------
 if __name__ == "__main__":
-    # Set GA parameters (adjust as needed)
-    POP_SIZE = 200  # Increased population size for more exploration
-    GENERATIONS = 80  # More generations for convergence
-    NUM_ROUNDS_EVAL = 1000  # Higher rounds for more stable fitness evaluation
-    NUM_PROCESSES = os.cpu_count()  # Use available CPU cores
+    # # 设置遗传算法参数
+    # POPULATION_SIZE = 500  # 种群大小 (可根据计算资源调整)
+    # GENERATIONS = 40  # 迭代代数 (可根据需要调整)
+    # NUM_ROUNDS_EVAL = 500  # 每代评估适应度的模拟轮数 (越高越准但越慢)
+    # ELITISM_RATIO = 0.1  # 精英比例
+    # TOURNAMENT_SIZE = 5  # 锦标赛选择大小
+    # NUM_PROCESSES = 8  # 并行评估的进程数 (设为CPU核心数或稍小)
+    #
+    # # 运行遗传算法训练
+    # best_genome_found = genetic_algorithm(
+    #     pop_size=POPULATION_SIZE,
+    #     generations=GENERATIONS,
+    #     num_rounds=NUM_ROUNDS_EVAL,
+    #     elitism_ratio=ELITISM_RATIO,
+    #     tournament_size=TOURNAMENT_SIZE,
+    #     num_processes=NUM_PROCESSES
+    # )
+    #
+    #
+    # save_best_genome(best_genome_found, filename="trained/optimized_genome_v2.pkl")
 
-    # --- Train the Model ---
-    print("Starting Genetic Algorithm Training...")
-    best_genome = genetic_algorithm(
-        pop_size=POP_SIZE,
-        generations=GENERATIONS,
-        num_rounds=NUM_ROUNDS_EVAL,
-        num_processes=NUM_PROCESSES,
-        # Other parameters like elitism, mutation can also be tuned here
-    )
+    # 加载并演示最佳基因组的效果 (可选)
+    print("\n加载并测试最佳基因组...")
+    loaded_genome = load_best_genome2(filename="trained/optimized_genome_v2.pkl")
+    if loaded_genome:
+        # 创建一副示例手牌用于演示
+        test_A, test_B = deal_cards()
+        # 获取策略演示
+        Get_GA_Strategy2(loaded_genome, test_A, test_B)
 
-    # --- Save the Best Genome ---
-    if best_genome:
-        save_best_genome(best_genome, filename="trained/best_game_genome_len4.pkl")  # New filename
-
-        # --- Load and Demonstrate ---
-        print("\nLoading the best genome for demonstration...")
-        loaded_genome = load_best_genome(filename="trained/best_game_genome_len4.pkl")
-
-        if loaded_genome:
-            print("Running demonstration with a sample deal...")
-            # Get a fresh deal for demonstration
-            test_A, test_B = deal_cards()
-            # Ensure B is not empty for a meaningful demo
-            while not test_B:
-                print("B was empty, dealing again for demo...")
-                test_A, test_B = deal_cards()
-
-            Get_GA_Strategy(loaded_genome, test_A, test_B)
-        else:
-            print("Could not load genome for demonstration.")
-    else:
-        print("Genetic algorithm did not produce a best genome.")

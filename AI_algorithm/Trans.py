@@ -191,35 +191,54 @@ def signal_handler(sig, frame):
 signal.signal(signal.SIGINT, signal_handler)
 
 
+import torch
+import torch.optim as optim
+import torch.nn as nn
+import numpy as np
+from torch.optim.lr_scheduler import CosineAnnealingLR
+
+
+def lr_warmup(epoch, lr_max, warmup_epochs):
+    if epoch < warmup_epochs:
+        warmup_lr = lr_max * (epoch + 1) / warmup_epochs
+        return warmup_lr
+    else:
+        return lr_max
+
+# 修改训练部分
 def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/transformer_move_predictor_6x3.pth",
-                num_a=6, num_b=3):
+                num_a=6, num_b=3, warmup_epochs=70, lr_max=0.0001, lr_min=0.000001):
     """
     训练 Transformer 模型 (针对 A=6, B=3)
     允许手动终止训练 (`Ctrl+C`) 并保存当前进度
+    并加入学习率预热和余弦退火
     """
     global stop_training
 
-    d_model = 512
-    nhead = 8
-    num_encoder_layers = 4
-    dim_feedforward = 1024
+    d_model = 256
+    nhead = 4
+    num_encoder_layers = 3
+    dim_feedforward = 512
     dropout = 0.1
 
     # 初始化模型
     model = TransformerMovePredictor(input_dim=1, d_model=d_model, nhead=nhead,
-                                     num_encoder_layers=num_encoder_layers,
-                                     dim_feedforward=dim_feedforward, dropout=dropout,
-                                     num_a=num_a, num_b=num_b).to(device)
+                                             num_encoder_layers=num_encoder_layers,
+                                             dim_feedforward=dim_feedforward, dropout=dropout,
+                                             num_a=num_a, num_b=num_b).to(device)
 
     conditional_print("模型参数量:", sum(p.numel() for p in model.parameters() if p.requires_grad))
     conditional_print("模型是否在GPU上:", next(model.parameters()).is_cuda)
 
-    optimizer = optim.AdamW(model.parameters(), lr=0.0001, weight_decay=0.01)
+    optimizer = optim.AdamW(model.parameters(), lr=lr_max, weight_decay=0.01)
 
     order_criterion = nn.CrossEntropyLoss().to(device)
     pos_criterion = nn.MSELoss().to(device)
 
     model.train()
+
+    # 学习率预热 (Warmup) 和 余弦退火调度
+    scheduler_cosine = CosineAnnealingLR(optimizer, T_max=epochs - warmup_epochs, eta_min=lr_min)
 
     try:
         for epoch in range(epochs):
@@ -252,6 +271,17 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
                 order_targets = torch.LongTensor(np.array(order_targets)).to(device)
                 pos_targets = torch.FloatTensor(np.array(pos_targets)).to(device)
 
+                # 在训练前，根据学习率预热策略更新学习率
+                if epoch < warmup_epochs:
+                    new_lr = lr_warmup(epoch, lr_max, warmup_epochs)
+                else:
+                    # 余弦退火调度
+                    new_lr = scheduler_cosine.get_lr()[0]  # 获取当前余弦退火后的学习率
+
+                # 更新学习率
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = new_lr
+
                 optimizer.zero_grad()
                 order_logits, pos_preds = model(inputs)
 
@@ -266,19 +296,9 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
                 total_loss += loss.item()
                 batch_count += 1
 
-                # 动态调整学习率
-                if total_loss / batch_count > 1:
-                    # 当损失大于 1 时，保持高学习率 (保持原始学习率)
-                    new_lr = 0.0001
-                elif total_loss / batch_count < 1 and total_loss / batch_count > 0.75:
-                    # 当损失小于 1 时，降低学习率至小于 0.000005
-                    new_lr = 0.000005
-                else:
-                    new_lr = 0.000001
-
-                # 更新优化器的学习率
-                for param_group in optimizer.param_groups:
-                    param_group['lr'] = new_lr
+            # 在每个epoch后更新余弦退火学习率
+            if epoch >= warmup_epochs:
+                scheduler_cosine.step()
 
             avg_loss = total_loss / batch_count if batch_count > 0 else total_loss
             print(f"Epoch {epoch + 1}/{epochs}, Loss: {avg_loss:.4f}, LR: {new_lr:.6f}")
@@ -292,7 +312,6 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
         print(f"Transformer 模型已保存至 {model_path}")
 
     return model
-
 
 # 修改 DNNpredict 以使用新的固定长度
 def Transformer_predict(A, B, model, num_a=6, num_b=3): # <--- 修改 num_a 默认值
@@ -389,7 +408,7 @@ def train():
 
 
     # 调用 train_model 时传递固定长度，并使用新的模型路径
-    train_model(train_data, epochs=200, batch_size=1024,
+    train_model(train_data, epochs=1000, batch_size=2048,
                 model_path="./trained/transformer_move_predictor_6x3.pth", # 新路径名
                 num_a=fixed_num_a, num_b=fixed_num_b) # 传递 6 和 3
 
