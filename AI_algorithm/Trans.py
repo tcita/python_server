@@ -52,10 +52,11 @@ class PositionalEncoding(nn.Module):
         x = x + self.pe[:, :x.size(1)]
         return self.dropout(x)
 
+# 修改 TransformerMovePredictor 类的初始化，增加输入维度
 class TransformerMovePredictor(nn.Module):
-    # 修改默认参数以反映新的固定长度
-    def __init__(self, input_dim=1, d_model=128, nhead=8, num_encoder_layers=3,
-                 dim_feedforward=512, dropout=0.1, num_a=6, num_b=3): # <--- 修改 num_a 默认值
+    # 修改默认参数以反映新的固定长度和增加的特征维度
+    def __init__(self, input_dim=6, d_model=128, nhead=8, num_encoder_layers=3,
+                 dim_feedforward=512, dropout=0.1, num_a=6, num_b=3): # 修改input_dim为6
         super(TransformerMovePredictor, self).__init__()
         # 验证传入的 num_a 和 num_b 是否符合预期（可选但推荐）
         if num_a != 6 or num_b != 3:
@@ -148,9 +149,10 @@ def sample_order(logits, temperature=1.0):
 
 
 # 修改默认参数以反映新的固定长度
-def prepare_data_transformer(sample: dict, num_a=6, num_b=3): # <--- 修改 num_a 默认值
+# 修改数据预处理函数，添加更多特征
+def prepare_data_transformer(sample: dict, num_a=6, num_b=3):
     """
-    数据预处理：构建输入序列和目标输出。
+    数据预处理：构建输入序列和目标输出，添加丰富的特征工程。
     """
     A = sample["A"]
     B = sample["B"]
@@ -158,14 +160,72 @@ def prepare_data_transformer(sample: dict, num_a=6, num_b=3): # <--- 修改 num_
 
     # 检查长度是否精确匹配 6 和 3
     if len(A) != num_a or len(B) != num_b:
-         # 现在我们期望 A 长度为 6, B 长度为 3
          print(f"Warning: Skipping sample with A={A}, B={B} due to unexpected length (expected A:{num_a}, B:{num_b}).")
          return None, None, None
 
-    input_sequence = np.array(A + B, dtype=np.float32) # (seq_len=9,)
+    # 计算丰富的特征
+    # 1. 基本统计特征
+    A_mean = sum(A) / len(A)
+    B_mean = sum(B) / len(B)
+    A_max = max(A)
+    A_min = min(A)
+    B_max = max(B)
+    B_min = min(B)
+    
+    # 2. 交集特征
+    intersection = set(A) & set(B)
+    intersection_size = len(intersection)
+    intersection_list = list(intersection)
+    
+    # 3. 位置特征
+    # 计算B中每个元素在A中的位置（如果存在）
+    positions_in_A = {}
+    for i, a_val in enumerate(A):
+        positions_in_A[a_val] = i
+    
+    # 创建增强的输入序列，保持原始值不变，但添加特征维度
+    enhanced_sequence = []
+    
+    # 处理A序列
+    for i, val in enumerate(A):
+        # [原始值, 归一化值, 是否在交集中, 相对位置, 相对大小, 交集大小比例]
+        is_in_intersection = 1.0 if val in intersection else 0.0
+        relative_position = i / num_a  # 相对位置 (0-1)
+        relative_size = (val - A_min) / max(1, A_max - A_min) if A_max > A_min else 0.5  # 相对大小 (0-1)
+        intersection_ratio = intersection_size / num_b  # 交集大小与B长度的比例
+        
+        enhanced_sequence.append([
+            val,  # 原始值
+            (val - A_mean) / max(1, A_max - A_min),  # 归一化值
+            is_in_intersection,  # 是否在交集中
+            relative_position,  # 相对位置
+            relative_size,  # 相对大小
+            intersection_ratio  # 交集大小比例
+        ])
+    
+    # 处理B序列
+    for i, val in enumerate(B):
+        # 检查是否在A中出现及其位置
+        is_in_A = 1.0 if val in A else 0.0
+        position_in_A = positions_in_A.get(val, -1)
+        relative_position_in_A = position_in_A / num_a if position_in_A >= 0 else -0.1
+        relative_size = (val - B_min) / max(1, B_max - B_min) if B_max > B_min else 0.5
+        intersection_ratio = intersection_size / num_b  # 交集大小与B长度的比例
+        
+        enhanced_sequence.append([
+            val,  # 原始值
+            (val - B_mean) / max(1, B_max - B_min),  # 归一化值
+            is_in_A,  # 是否在A中
+            relative_position_in_A,  # 在A中的相对位置（如果存在）
+            relative_size,  # 相对大小
+            intersection_ratio  # 交集大小比例
+        ])
+    
+    # 将序列转换为numpy数组
+    input_sequence = np.array(enhanced_sequence, dtype=np.float32)  # (seq_len=9, feature_dim=5)
 
-    order_target = np.array([move[0] for move in best_moves], dtype=np.int64) # (num_b=3,)
-    pos_target = np.array([move[1] for move in best_moves], dtype=np.float32) # (num_b=3,)
+    order_target = np.array([move[0] for move in best_moves], dtype=np.int64)
+    pos_target = np.array([move[1] for move in best_moves], dtype=np.float32)
 
     if len(set(order_target)) != num_b:
         print(f"Warning: Skipping sample with invalid order target in best_moves: {order_target}")
@@ -205,7 +265,7 @@ def lr_warmup(epoch, lr_max, warmup_epochs):
     else:
         return lr_max
 
-# 修改训练部分
+# 修改训练函数中的模型初始化部分
 def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/transformer_move_predictor_6x3.pth",
                 num_a=6, num_b=3, warmup_epochs=100, lr_max=0.0001, lr_min=0.0000005):
     """
@@ -221,11 +281,11 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
     dim_feedforward = 512
     dropout = 0.1
 
-    # 初始化模型
-    model = TransformerMovePredictor(input_dim=1, d_model=d_model, nhead=nhead,
-                                             num_encoder_layers=num_encoder_layers,
-                                             dim_feedforward=dim_feedforward, dropout=dropout,
-                                             num_a=num_a, num_b=num_b).to(device)
+    # 初始化模型，修改input_dim为6
+    model = TransformerMovePredictor(input_dim=6, d_model=d_model, nhead=nhead,
+                                     num_encoder_layers=num_encoder_layers,
+                                     dim_feedforward=dim_feedforward, dropout=dropout,
+                                     num_a=num_a, num_b=num_b).to(device)
 
     conditional_print("模型参数量:", sum(p.numel() for p in model.parameters() if p.requires_grad))
     conditional_print("模型是否在GPU上:", next(model.parameters()).is_cuda)
@@ -327,7 +387,8 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
     return model
 
 # 修改 DNNpredict 以使用新的固定长度
-def Transformer_predict(A, B, model, num_a=6, num_b=3): # <--- 修改 num_a 默认值
+# 修改预测函数，使用相同的特征工程
+def Transformer_predict(A, B, model, num_a=6, num_b=3):
     """
     使用训练好的 Transformer 模型进行预测 (针对 A=6, B=3)。
     """
@@ -335,8 +396,7 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3): # <--- 修改 num_a 默�
         # 特殊情况处理可以保留，但现在 A 的长度是 6
         if not set(A) & set(B) and len(B) == len(set(B)):
              print("快速路径：A、B无交集且B无重复，返回默认策略")
-             # 返回的策略仍然是针对 B 中的 3 个元素
-             return [[0, 0], [1, 0], [2, 0]], 0 # 默认位置 1 可能需要调整
+             return [[0, 0], [1, 0], [2, 0]], 0
 
         if not isinstance(model, TransformerMovePredictor):
              raise ValueError(f"需要 TransformerMovePredictor 实例, 但得到 {type(model)}")
@@ -347,8 +407,62 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3): # <--- 修改 num_a 默�
         if len(A) != num_a or len(B) != num_b:
             raise ValueError(f"DNNpredict 期望输入 A 长度为 {num_a}, B 长度为 {num_b}, 但收到 A:{len(A)}, B:{len(B)}")
 
-        input_sequence = np.array(A + B, dtype=np.float32)
-        input_tensor = torch.FloatTensor(input_sequence).unsqueeze(0).to(device) # (1, seq_len=9)
+        # 应用与训练时相同的特征工程
+        # 1. 基本统计特征
+        A_mean = sum(A) / len(A)
+        B_mean = sum(B) / len(B)
+        A_max = max(A)
+        A_min = min(A)
+        B_max = max(B)
+        B_min = min(B)
+        
+        # 2. 交集特征
+        intersection = set(A) & set(B)
+        intersection_size = len(intersection)
+        
+        # 3. 位置特征
+        positions_in_A = {}
+        for i, a_val in enumerate(A):
+            positions_in_A[a_val] = i
+        
+        # 创建增强的输入序列
+        enhanced_sequence = []
+        
+        # 处理A序列
+        for i, val in enumerate(A):
+            is_in_intersection = 1.0 if val in intersection else 0.0
+            relative_position = i / num_a
+            relative_size = (val - A_min) / max(1, A_max - A_min) if A_max > A_min else 0.5
+            intersection_ratio = intersection_size / num_b  # 添加交集比例特征
+            
+            enhanced_sequence.append([
+                val,
+                (val - A_mean) / max(1, A_max - A_min),
+                is_in_intersection,
+                relative_position,
+                relative_size,
+                intersection_ratio  # 添加交集比例特征
+            ])
+        
+        # 处理B序列
+        for i, val in enumerate(B):
+            is_in_A = 1.0 if val in A else 0.0
+            position_in_A = positions_in_A.get(val, -1)
+            relative_position_in_A = position_in_A / num_a if position_in_A >= 0 else -0.1
+            relative_size = (val - B_min) / max(1, B_max - B_min) if B_max > B_min else 0.5
+            intersection_ratio = intersection_size / num_b  # 添加交集比例特征
+            
+            enhanced_sequence.append([
+                val,
+                (val - B_mean) / max(1, B_max - B_min),
+                is_in_A,
+                relative_position_in_A,
+                relative_size,
+                intersection_ratio  # 添加交集比例特征
+            ])
+        
+        input_sequence = np.array(enhanced_sequence, dtype=np.float32)
+        input_tensor = torch.FloatTensor(input_sequence).unsqueeze(0).to(device)  # (1, seq_len=9, feature_dim=5)
 
         with torch.no_grad():
             order_logits, pos_preds = model(input_tensor)
@@ -408,16 +522,16 @@ def train():
     fixed_num_a = 6
     fixed_num_b = 3
 
-    # 可选：预先过滤数据，只保留符合 6x3 长度的样本
-    original_count = len(train_data)
-    train_data = [s for s in train_data if len(s.get('A', [])) == fixed_num_a and len(s.get('B', [])) == fixed_num_b]
-    filtered_count = len(train_data)
-    if original_count > filtered_count:
-        print(f"已过滤数据：保留了 {filtered_count} 个 A长度={fixed_num_a}, B长度={fixed_num_b} 的样本 (移除了 {original_count - filtered_count} 个)")
-
-    if not train_data:
-        print(f"错误: 过滤后没有找到符合长度 {fixed_num_a}x{fixed_num_b} 的训练数据")
-        exit(1)
+    # # 可选：预先过滤数据，只保留符合 6x3 长度的样本
+    # original_count = len(train_data)
+    # train_data = [s for s in train_data if len(s.get('A', [])) == fixed_num_a and len(s.get('B', [])) == fixed_num_b]
+    # filtered_count = len(train_data)
+    # if original_count > filtered_count:
+    #     print(f"已过滤数据：保留了 {filtered_count} 个 A长度={fixed_num_a}, B长度={fixed_num_b} 的样本 (移除了 {original_count - filtered_count} 个)")
+    #
+    # if not train_data:
+    #     print(f"错误: 过滤后没有找到符合长度 {fixed_num_a}x{fixed_num_b} 的训练数据")
+    #     exit(1)
 
 
     # 调用 train_model 时传递固定长度，并使用新的模型路径
