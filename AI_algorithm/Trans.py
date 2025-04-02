@@ -330,6 +330,8 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
                     # 低分样本权重略微增加，但不要太激进
                     # 调整权重计算公式以匹配实际数据分布（最低分约20分）
                     weight = 1.0 + max(0, (40 - score) / 40)  # 20分时权重为1.5，40分及以上权重为1.0
+                    
+                    
                     sample_weights.append(weight)
                 
                 if not inputs:
@@ -357,9 +359,11 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
                 order_loss = order_criterion(order_logits, order_targets)
                 pos_loss = pos_criterion(pos_preds, pos_targets)
                 
-                # 应用样本权重
+                # 应用样本权重  使用时将(order_loss + pos_loss)*sample_weights
                 sample_weights = torch.tensor(sample_weights, device=device)
-                weighted_loss = (order_loss + pos_loss) * sample_weights
+
+
+                weighted_loss = (order_loss + pos_loss)
                 loss = weighted_loss.mean()
 
                 loss.backward()
