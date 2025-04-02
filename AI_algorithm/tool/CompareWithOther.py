@@ -9,14 +9,14 @@ from scipy import stats
 from sympy import false
 
 from AI_algorithm.Deep_Neural_Network import  DNNpredict
-from AI_algorithm.GA import genome_choose_insertion, Get_GA_Strategy
+from AI_algorithm.GA import genome_choose_insertion, GA_Strategy
 
 import matplotlib.pyplot as plt
 
 from AI_algorithm.GA_new import load_best_genome2, Get_GA_Strategy2
 from AI_algorithm.Trans import TransformerMovePredictor, Transformer_predict
 from AI_algorithm.Trans_assist import TransformerMovePredictor_assist, Transformer_predict_assist
-from AI_algorithm.brute_force import recursive_strategy
+from AI_algorithm.brute_force import recursive_StrategyAndScore
 from AI_algorithm.server import load_model_from_memory
 from AI_algorithm.tool.tool import load_best_genome, deal_cards_tool, simulate_insertion_tool
 
@@ -295,7 +295,7 @@ def Compare_TwoModel(model, other_model, rounds=1000,plot=false):
 
 def genome(A,B):
     best_genome = genome_loaded
-    move=Get_GA_Strategy(best_genome, A, B)
+    move=GA_Strategy(best_genome, A, B)
     return move
 def genome2(A,B):
     best_genome2 = genome_loaded2
@@ -320,55 +320,58 @@ def Transformer(A, B):
     num_encoder_layers = 3
     dim_feedforward = 512
     dropout = 0.1
+
     model1 = TransformerMovePredictor(
         num_a=num_a_test, num_b=num_b_test, d_model=d_model,
         nhead=nhead, num_encoder_layers=num_encoder_layers,
         dim_feedforward=dim_feedforward
     ).to(device)
 
-    model3= TransformerMovePredictor_assist(
-        num_a=num_a_test, num_b=num_b_test, d_model=d_model,
-        nhead=nhead, num_encoder_layers=num_encoder_layers,
-        dim_feedforward=dim_feedforward
-    ).to(device)
+    # model3= TransformerMovePredictor_assist(
+    #     num_a=num_a_test, num_b=num_b_test, d_model=d_model,
+    #     nhead=nhead, num_encoder_layers=num_encoder_layers,
+    #     dim_feedforward=dim_feedforward
+    # ).to(device)
+
     model_path_1 = "../trained/transformer_move_predictor_6x3.pth" # <--- 修改
     model1.load_state_dict(torch.load(model_path_1, map_location=device))
     move1, _= Transformer_predict(A, B, model1, num_a=num_a_test, num_b=num_b_test)
 
-    score1=strategy_TrueScore(A,B,move1)
-    best_genome = genome_loaded
-
-    move2=Get_GA_Strategy(best_genome, A, B)
-    score2=strategy_TrueScore(A,B,move2)
-    # 专门预测低分的transformer模型
-    if(score1<40 ):
-        model_path_3 = "../trained/transformer_move_predictor_assist.pth"  # <--- 修改
-        model3.load_state_dict(torch.load(model_path_3, map_location=device))
-
-    if score2 > score1:
-
-        move3, _ = Transformer_predict_assist(A, B, model3, num_a=num_a_test, num_b=num_b_test)
+    # score1=strategy_TrueScore(A,B,move1)
 
 
-        score3 = strategy_TrueScore(A, B, move3)
-        if score3 > score2:
-            print(f"HI move3")
-            print(f"普通Transformer得分：{score1}")
-            print(f"GA得分：{score2}")
-            print(f"辅助Transformer得分：{score3}")
-            return move3
-        else:
-            print(f"HI move2")
-            print(f"普通Transformer得分：{score1}")
-            print(f"GA得分：{score2}")
-            print(f"辅助Transformer得分：{score3}")
-            return move2
-    else:
-        return move1
+    # best_genome = genome_loaded
+    # move2=GA_Strategy(best_genome, A, B)
+    # score2=strategy_TrueScore(A,B,move2)
+    # # 专门预测低分的transformer模型
+    # if(score1<40 ):
+    #     model_path_3 = "../trained/transformer_move_predictor_assist.pth"  # <--- 修改
+    #     model3.load_state_dict(torch.load(model_path_3, map_location=device))
+    #
+    # if score2 > score1:
+    #
+    #     move3, _ = Transformer_predict_assist(A, B, model3, num_a=num_a_test, num_b=num_b_test)
+    #
+    #
+    #     score3 = strategy_TrueScore(A, B, move3)
+    #     if score3 > score2:
+    #         print(f"HI move3")
+    #         print(f"普通Transformer得分：{score1}")
+    #         print(f"GA得分：{score2}")
+    #         print(f"辅助Transformer得分：{score3}")
+    #         return move3
+    #     else:
+    #         print(f"HI move2")
+    #         print(f"普通Transformer得分：{score1}")
+    #         print(f"GA得分：{score2}")
+    #         print(f"辅助Transformer得分：{score3}")
+    #         return move2
+    # else:
+    return move1
 
 
 def recursive(A,B):
-    score,strategy=recursive_strategy(A,B)
+    score,strategy=recursive_StrategyAndScore(A, B)
     return score,strategy
 
 # 这个预测不了策略

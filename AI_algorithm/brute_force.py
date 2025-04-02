@@ -10,7 +10,7 @@ from AI_algorithm.GA import simulate_insertion
 from collections import defaultdict
 from copy import copy
 # 返回的bestmoves中的位置是基于变化后的A（simulate_insertion处理过）的索引
-def recursive_strategy(A, B, original_indices=None, move_sequence=None, used_indices=None):
+def recursive_StrategyAndScore(A, B, original_indices=None, move_sequence=None, used_indices=None):
     if move_sequence is None:
         move_sequence = []
     if original_indices is None:
@@ -38,7 +38,7 @@ def recursive_strategy(A, B, original_indices=None, move_sequence=None, used_ind
                 B_new = B[:i] + B[i+1:]
 
                 # 递归调用，传递拷贝后的used_indices
-                score, moves = recursive_strategy(
+                score, moves = recursive_StrategyAndScore(
                     AA, B_new, original_indices,
                     move_sequence ,
                     current_used  # 使用拷贝后的used_indices
@@ -48,14 +48,17 @@ def recursive_strategy(A, B, original_indices=None, move_sequence=None, used_ind
                 if new_score > max_score:
                     max_score = new_score
                     # 确保新的插入操作 (index_b, a) 是在 moves 的前面，而不是后面
-                    best_moves =   [(index_b, a)]+moves
+                    best_moves =   [[index_b, a]]+moves
 
     return max_score, best_moves
+def recursive_Strategy(A, B):
+     _,move=recursive_StrategyAndScore(A,B)
+     return move
 
 if __name__ == "__main__":
     A= [9, 2, 7, 13, 6, 10]
     B= [9, 110, 1300]
     # print(recursive(A,B))
-    s,st=recursive_strategy(A, B)
+    s,st=recursive_StrategyAndScore(A, B)
     print(s)
     print(st)

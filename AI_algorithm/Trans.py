@@ -207,7 +207,7 @@ def lr_warmup(epoch, lr_max, warmup_epochs):
 
 # 修改训练部分
 def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/transformer_move_predictor_6x3.pth",
-                num_a=6, num_b=3, warmup_epochs=70, lr_max=0.0001, lr_min=0.000001):
+                num_a=6, num_b=3, warmup_epochs=100, lr_max=0.0001, lr_min=0.0000005):
     """
     训练 Transformer 模型 (针对 A=6, B=3)
     允许手动终止训练 (`Ctrl+C`) 并保存当前进度
@@ -255,7 +255,8 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
 
                 batch = train_data[i:i + batch_size]
                 inputs, order_targets, pos_targets = [], [], []
-
+                sample_weights = []  # 添加样本权重列表
+                
                 for sample in batch:
                     input_seq, order_tgt, pos_tgt = prepare_data_transformer(sample, num_a=num_a, num_b=num_b)
                     if input_seq is None:
@@ -263,7 +264,14 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
                     inputs.append(input_seq)
                     order_targets.append(order_tgt)
                     pos_targets.append(pos_tgt)
-
+                    
+                    # 根据样本分数设置权重
+                    score = sample.get("max_score", 60)
+                    # 低分样本权重略微增加，但不要太激进
+                    # 调整权重计算公式以匹配实际数据分布（最低分约20分）
+                    weight = 1.0 + max(0, (40 - score) / 40)  # 20分时权重为1.5，40分及以上权重为1.0
+                    sample_weights.append(weight)
+                
                 if not inputs:
                     continue
 
@@ -285,9 +293,14 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
                 optimizer.zero_grad()
                 order_logits, pos_preds = model(inputs)
 
+                # 计算加权损失
                 order_loss = order_criterion(order_logits, order_targets)
                 pos_loss = pos_criterion(pos_preds, pos_targets)
-                loss = order_loss + pos_loss
+                
+                # 应用样本权重
+                sample_weights = torch.tensor(sample_weights, device=device)
+                weighted_loss = (order_loss + pos_loss) * sample_weights
+                loss = weighted_loss.mean()
 
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)

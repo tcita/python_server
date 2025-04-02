@@ -301,7 +301,7 @@ def GA(genome,A,B):
         pos, score, A = genome_choose_insertion(genome, A, x, remaining_B)  # 选择最优插入位置并更新牌堆
         round_score += score  # 累加得分
     return round_score  # 返回本轮总得分
-def Get_GA_Strategy(best_genome, A, B):
+def GA_Strategy(best_genome, A, B):
 
     round_score = 0
     num_moves = 0

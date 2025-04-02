@@ -5,7 +5,7 @@ import logging
 import  torch
 from flask import Flask, request, jsonify
 from AI_algorithm.Deep_Neural_Network import DNNpredict
-from AI_algorithm.GA import Get_GA_Strategy
+from AI_algorithm.GA import GA_Strategy
 from AI_algorithm.tool.tool import load_best_genome, simulate_insertion_tool
 from AI_algorithm.Deep_Neural_Network import MovePredictor
 # 添加父目录到 Python 搜索路径
@@ -139,7 +139,7 @@ def get_strategy():
             logger.error("MODEL is not a MovePredictor instance")
             return jsonify({"error": "Model loading failed"}), 500
 
-        GA_Strategy = Get_GA_Strategy(GENOME, A, B)
+        GA_Strategy = GA_Strategy(GENOME, A, B)
         DNN_Strategy, _ = DNNpredict(A, B, MODEL)
 
         GA_Final_Score = calculate_final_score(A, B, GA_Strategy)

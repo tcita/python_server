@@ -1,6 +1,6 @@
 import json
 
-from AI_algorithm.brute_force import recursive_strategy
+from AI_algorithm.brute_force import recursive_StrategyAndScore
 
 
 
@@ -26,7 +26,7 @@ def generate_training_data(num_samples=100000):
 
 
 
-        max_score, best_moves = recursive_strategy(A, B)
+        max_score, best_moves = recursive_StrategyAndScore(A, B)
         print(f"{i} of {num_samples}")
         # 提取已有的第一个元素
         existing_first_elements = {move[0] for move in best_moves}

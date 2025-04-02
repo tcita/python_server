@@ -1,7 +1,7 @@
 import unittest
 
 from AI_algorithm.Deep_Neural_Network import DNNpredict
-from AI_algorithm.brute_force import recursive_strategy
+from AI_algorithm.brute_force import recursive_StrategyAndScore
 from AI_algorithm.tool.tool import deal_cards_tool, calculate_score_by_strategy
 
 
@@ -28,7 +28,7 @@ class TestPrediction_Of_DNN(unittest.TestCase):
                                  f"预测得分 ({score0}) 与计算得分 ({score}) 不匹配！")
 
             # 测试2: 神经网络预测得分不应大于递归算法得分
-            score1, move1 = recursive_strategy(A, B)
+            score1, move1 = recursive_StrategyAndScore(A, B)
             with self.subTest(A=A, B=B, score1=score1, score0=score0):
                 self.assertGreaterEqual(score1, score0,
                                         f"预测出了比真实值还大的值！预测得分: {score0}, 递归得分: {score1}")
