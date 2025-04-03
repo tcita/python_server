@@ -99,15 +99,7 @@ def score_based_loss_cuda(order_logits, pos_preds, A_tensor, B_tensor, target_sc
     # 2. 位置损失 - 监督信号
     pos_mse = F.mse_loss(clipped_positions, pos_preds)
     
-    # 3. 目标分数引导的损失
-    # 将目标分数归一化到[0,1]
-    normalized_scores = target_scores / 100.0  # 假设最高分是100
-    
-    # 根据目标分数调整损失权重 (高分样本给予更高权重)
-    score_weights = 0.5 + normalized_scores * 1.5
-    weighted_loss = (order_mse + pos_mse) * score_weights
-    
-    return weighted_loss.mean()
+    return (order_mse + pos_mse).mean()
 
 jsonfilename="json/data_raw.json" # 请确保你的 JSON 文件路径正确
 GPUDEBUG_MODE = True
@@ -247,77 +239,72 @@ def sample_order(logits, temperature=1.0):
 # 修改数据预处理函数，添加更多特征
 def prepare_data_transformer(sample: dict, num_a=6, num_b=3):
     """
-    数据预处理：构建输入序列和目标输出，添加丰富的特征工程。
+    数据预处理：构建输入序列和目标输出，添加修改后的特征工程。
     """
     A = sample["A"]
     B = sample["B"]
     best_moves = sample["best_moves"]
 
-    # 检查长度是否精确匹配 6 和 3
     if len(A) != num_a or len(B) != num_b:
          print(f"Warning: Skipping sample with A={A}, B={B} due to unexpected length (expected A:{num_a}, B:{num_b}).")
          return None, None, None
 
-    # 计算丰富的特征
-    # 1. 基本统计特征
-    A_mean = sum(A) / len(A)
-    B_mean = sum(B) / len(B)
-    A_max = max(A)
-    A_min = min(A)
-    B_max = max(B)
-    B_min = min(B)
+    # 新增特征计算
+    A_sum = sum(A)  # A序列的和
+    B_sum = sum(B)  # B序列的和
     
-    # 2. 交集特征
+    # 计算B序列中重复的元素数
+    B_counter = {}
+    for val in B:
+        B_counter[val] = B_counter.get(val, 0) + 1
+    B_duplicates = sum(count - 1 for count in B_counter.values())  # 重复的元素数
+    
+    # 交集特征
     intersection = set(A) & set(B)
     intersection_size = len(intersection)
-    intersection_list = list(intersection)
     
-    # 3. 位置特征
-    # 计算B中每个元素在A中的位置（如果存在）
+    # 位置特征
     positions_in_A = {}
     for i, a_val in enumerate(A):
         positions_in_A[a_val] = i
     
-    # 创建增强的输入序列，保持原始值不变，但添加特征维度
+    # 创建增强的输入序列
     enhanced_sequence = []
     
     # 处理A序列
     for i, val in enumerate(A):
-        # [原始值, 归一化值, 是否在交集中, 相对位置, 相对大小, 交集大小比例]
         is_in_intersection = 1.0 if val in intersection else 0.0
-        relative_position = i / num_a  # 相对位置 (0-1)
-        relative_size = (val - A_min) / max(1, A_max - A_min) if A_max > A_min else 0.5  # 相对大小 (0-1)
-        intersection_ratio = intersection_size / num_b  # 交集大小与B长度的比例
+        relative_position = i / num_a
+        relative_size = val / A_sum if A_sum != 0 else 0  # 使用与总和的比例代替相对大小
+        intersection_ratio = intersection_size / num_b
         
         enhanced_sequence.append([
             val,  # 原始值
-            (val - A_mean) / max(1, A_max - A_min),  # 归一化值
+            val / A_sum if A_sum != 0 else 0,  # 值占A总和的比例
             is_in_intersection,  # 是否在交集中
             relative_position,  # 相对位置
-            relative_size,  # 相对大小
+            relative_size,  # 相对大小（占总和的比例）
             intersection_ratio  # 交集大小比例
         ])
     
     # 处理B序列
     for i, val in enumerate(B):
-        # 检查是否在A中出现及其位置
         is_in_A = 1.0 if val in A else 0.0
         position_in_A = positions_in_A.get(val, -1)
         relative_position_in_A = position_in_A / num_a if position_in_A >= 0 else -0.1
-        relative_size = (val - B_min) / max(1, B_max - B_min) if B_max > B_min else 0.5
-        intersection_ratio = intersection_size / num_b  # 交集大小与B长度的比例
+        relative_size = val / B_sum if B_sum != 0 else 0  # 使用与总和的比例
         
         enhanced_sequence.append([
             val,  # 原始值
-            (val - B_mean) / max(1, B_max - B_min),  # 归一化值
+            val / B_sum if B_sum != 0 else 0,  # 值占B总和的比例
             is_in_A,  # 是否在A中
             relative_position_in_A,  # 在A中的相对位置（如果存在）
-            relative_size,  # 相对大小
+            B_duplicates / num_b,  # B中重复元素的比例
             intersection_ratio  # 交集大小比例
         ])
     
     # 将序列转换为numpy数组
-    input_sequence = np.array(enhanced_sequence, dtype=np.float32)  # (seq_len=9, feature_dim=5)
+    input_sequence = np.array(enhanced_sequence, dtype=np.float32)
 
     order_target = np.array([move[0] for move in best_moves], dtype=np.int64)
     pos_target = np.array([move[1] for move in best_moves], dtype=np.float32)
@@ -362,8 +349,7 @@ def lr_warmup(epoch, lr_max, warmup_epochs):
 
 # 修改训练函数中的模型初始化部分
 def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/transformer_move_predictor_6x3.pth",
-                num_a=6, num_b=3, warmup_epochs=50, lr_max=0.0001, lr_min=0.0000005,
-                score_weight=0.5):
+                num_a=6, num_b=3, warmup_epochs=50, lr_max=0.0001, lr_min=0.0000005):
     """
     训练 Transformer 模型 (针对 A=6, B=3)
     允许手动终止训练 (`Ctrl+C`) 并保存当前进度
@@ -411,8 +397,6 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
 
                 batch = train_data[i:i + batch_size]
                 inputs, order_targets, pos_targets = [], [], []
-                sample_weights = []  # 添加样本权重列表
-                A_list, B_list, target_scores = [], [], []  # 新增列表收集A、B和目标得分
                 
                 for sample in batch:
                     input_seq, order_tgt, pos_tgt = prepare_data_transformer(sample, num_a=num_a, num_b=num_b)
@@ -421,17 +405,6 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
                     inputs.append(input_seq)
                     order_targets.append(order_tgt)
                     pos_targets.append(pos_tgt)
-                    
-                    # 保存A、B和目标得分
-                    A_list.append(sample["A"])
-                    B_list.append(sample["B"])
-                    target_scores.append(sample.get("max_score", 60))
-                    
-                    # 根据样本分数设置权重
-                    score = sample.get("max_score", 60)
-                    # 修改权重计算，高分样本权重更高
-                    weight = 1.0 + max(0, (score - 40) / 40)  # 80分时权重为2.0，40分及以下权重为1.0
-                    sample_weights.append(weight)
                 
                 if not inputs:
                     continue
@@ -458,25 +431,10 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
                 order_loss = order_criterion(order_logits, order_targets)
                 pos_loss = pos_criterion(pos_preds, pos_targets)
 
-                # 将A和B转换为张量并移至GPU
-                A_tensor = torch.tensor([A_list[i] for i in range(len(A_list))], device=device)
-                B_tensor = torch.tensor([B_list[i] for i in range(len(B_list))], device=device)
-                target_scores_tensor = torch.as_tensor(target_scores, dtype=torch.float32, device=device)
-
                 # 计算基于得分的损失 (CUDA加速版本)
-                score_loss = score_based_loss_cuda(order_logits, pos_preds, A_tensor, B_tensor, target_scores_tensor)
+                score_loss = score_based_loss_cuda(order_logits, pos_preds, torch.tensor([sample["A"] for sample in batch], device=device), torch.tensor([sample["B"] for sample in batch], device=device), torch.tensor([sample.get("max_score", 60) for sample in batch], device=device))
 
-                # 在训练循环中
-                if epoch < warmup_epochs:
-                    # 初始阶段：以标准损失为主
-                    loss = order_loss + pos_loss + 0.1 * score_loss
-                elif epoch < warmup_epochs + 200:
-                    # 中间阶段：逐渐增加得分损失权重
-                    score_weight_dynamic = 0.1 + (epoch - warmup_epochs) * 0.002  # 逐渐从0.1增加到0.5
-                    loss = order_loss + pos_loss + score_weight_dynamic * score_loss
-                else:
-                    # 后期阶段：以得分损失为主
-                    loss = 0.5 * (order_loss + pos_loss) + score_weight * score_loss
+                loss = order_loss + pos_loss + score_loss
 
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -523,20 +481,22 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
         if len(A) != num_a or len(B) != num_b:
             raise ValueError(f"DNNpredict 期望输入 A 长度为 {num_a}, B 长度为 {num_b}, 但收到 A:{len(A)}, B:{len(B)}")
 
-        # 应用与训练时相同的特征工程
-        # 1. 基本统计特征
-        A_mean = sum(A) / len(A)
-        B_mean = sum(B) / len(B)
-        A_max = max(A)
-        A_min = min(A)
-        B_max = max(B)
-        B_min = min(B)
+        # 应用新的特征工程
+        # 1. 计算序列和
+        A_sum = sum(A)
+        B_sum = sum(B)
         
-        # 2. 交集特征
+        # 2. 计算B序列中重复的元素数
+        B_counter = {}
+        for val in B:
+            B_counter[val] = B_counter.get(val, 0) + 1
+        B_duplicates = sum(count - 1 for count in B_counter.values())
+        
+        # 3. 交集特征
         intersection = set(A) & set(B)
         intersection_size = len(intersection)
         
-        # 3. 位置特征
+        # 4. 位置特征
         positions_in_A = {}
         for i, a_val in enumerate(A):
             positions_in_A[a_val] = i
@@ -548,16 +508,16 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
         for i, val in enumerate(A):
             is_in_intersection = 1.0 if val in intersection else 0.0
             relative_position = i / num_a
-            relative_size = (val - A_min) / max(1, A_max - A_min) if A_max > A_min else 0.5
-            intersection_ratio = intersection_size / num_b  # 添加交集比例特征
+            relative_size = val / A_sum if A_sum != 0 else 0
+            intersection_ratio = intersection_size / num_b
             
             enhanced_sequence.append([
-                val,
-                (val - A_mean) / max(1, A_max - A_min),
-                is_in_intersection,
-                relative_position,
-                relative_size,
-                intersection_ratio  # 添加交集比例特征
+                val,  # 原始值
+                val / A_sum if A_sum != 0 else 0,  # 值占A总和的比例
+                is_in_intersection,  # 是否在交集中
+                relative_position,  # 相对位置
+                relative_size,  # 相对大小（占总和的比例）
+                intersection_ratio  # 交集大小比例
             ])
         
         # 处理B序列
@@ -565,33 +525,30 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
             is_in_A = 1.0 if val in A else 0.0
             position_in_A = positions_in_A.get(val, -1)
             relative_position_in_A = position_in_A / num_a if position_in_A >= 0 else -0.1
-            relative_size = (val - B_min) / max(1, B_max - B_min) if B_max > B_min else 0.5
-            intersection_ratio = intersection_size / num_b  # 添加交集比例特征
+            relative_size = val / B_sum if B_sum != 0 else 0
             
             enhanced_sequence.append([
-                val,
-                (val - B_mean) / max(1, B_max - B_min),
-                is_in_A,
-                relative_position_in_A,
-                relative_size,
-                intersection_ratio  # 添加交集比例特征
+                val,  # 原始值
+                val / B_sum if B_sum != 0 else 0,  # 值占B总和的比例
+                is_in_A,  # 是否在A中
+                relative_position_in_A,  # 在A中的相对位置（如果存在）
+                B_duplicates / num_b,  # B中重复元素的比例
+                intersection_ratio  # 交集大小比例
             ])
-        
+
         input_sequence = np.array(enhanced_sequence, dtype=np.float32)
-        input_tensor = torch.FloatTensor(input_sequence).unsqueeze(0).to(device)  # (1, seq_len=9, feature_dim=5)
+        input_tensor = torch.FloatTensor(input_sequence).unsqueeze(0).to(device)
 
         with torch.no_grad():
             order_logits, pos_preds = model(input_tensor)
-            # order_logits: (1, 3, 3), pos_preds: (1, 3)
 
-        pred_order_indices = sample_order(order_logits).squeeze(0).cpu().numpy() # (3,)
-        pred_moves_raw = pos_preds.squeeze(0).cpu().numpy() # (3,)
+        pred_order_indices = sample_order(order_logits).squeeze(0).cpu().numpy()
+        pred_moves_raw = pos_preds.squeeze(0).cpu().numpy()
 
-        # 位置裁剪的基准是初始 A 的长度，现在是 6
-        pos_range_base = len(A) # = num_a = 6
-        pred_moves_clipped = [int(np.clip(p, 0, pos_range_base + k)) for k, p in enumerate(pred_moves_raw)] # 位置范围 0 到 6+k
+        pos_range_base = len(A)
+        pred_moves_clipped = [int(np.clip(p, 0, pos_range_base + k)) for k, p in enumerate(pred_moves_raw)]
 
-        best_moves = [[int(pred_order_indices[k]), pred_moves_clipped[k]] for k in range(num_b)] # num_b = 3
+        best_moves = [[int(pred_order_indices[k]), pred_moves_clipped[k]] for k in range(num_b)]
 
         final_order = [move[0] for move in best_moves]
         final_moves = [move[1] for move in best_moves]
@@ -607,7 +564,7 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
         import traceback
         traceback.print_exc()
         print("返回默认策略")
-        default_strategy = [[i, 1] for i in range(len(B))] # B 长度仍为 3
+        default_strategy = [[i, 1] for i in range(len(B))]
         default_score = calculate_score_by_strategy(A, B, default_strategy)
         return default_strategy, default_score
 

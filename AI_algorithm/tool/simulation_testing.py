@@ -48,17 +48,114 @@ def strategy_scoring(A, B, strategy):
     #     print(strategy)
     return score1+score2+score3
     # print(f"总得分为: {score1 + score2 + score3}")
+
+def analyze_transformer_errors(model_strategy, threshold=5, num_samples=1000):
+    """
+    分析Transformer模型预测得分与真实得分差距较大的情况，并将结果保存为指定格式的JSON文件
+    """
+    large_gap_cases = []
+    formatted_cases = []  # 用于存储按指定格式整理的案例
+    
+    for i in range(num_samples):
+        # 生成随机的A和B
+        A, B = deal_cards_tool()
+
+        # 获取模型预测的策略
+        if model_strategy == Transformer:
+            predicted_strategy = model_strategy(A, B)
+
+        pred_score = strategy_scoring(A.copy(), B, predicted_strategy)
+        # 计算真实的最优策略和得分
+        true_strategy = recursive_Strategy(A, B)
+
+        # 填充真实值策略
+        existing_first_elements = {move[0] for move in true_strategy}
+        missing_first_elements = [x for x in [0, 1, 2] if x not in existing_first_elements]
+        while len(true_strategy) < 3:
+            first_element = missing_first_elements.pop(0)
+            true_strategy.append([first_element, 0])
+
+        true_score = strategy_scoring(A.copy(), B, true_strategy)
+        
+        # 计算预测得分与真实得分的差距
+        score_gap = abs(true_score - pred_score)
+        
+        if score_gap >= threshold:
+            # 保存详细信息用于控制台输出
+            case_info = {
+                'A': A,
+                'B': B,
+                'true_strategy': true_strategy,
+                'predicted_strategy': predicted_strategy,
+                'true_score': true_score,
+                'predicted_score': pred_score,
+                'score_gap': score_gap
+            }
+            large_gap_cases.append(case_info)
+            
+            # 按指定格式保存案例
+            formatted_case = {
+                'A': A,
+                'B': B,
+                'max_score': true_score,  # 使用true_score作为max_score
+                'best_moves': true_strategy  # 使用true_strategy作为best_moves
+            }
+            formatted_cases.append(formatted_case)
+            
+            print(f"\n发现差距较大的案例 ({i+1}/{num_samples}):")
+            print(f"A: {A}")
+            print(f"B: {B}")
+            print(f"真实策略: {true_strategy}")
+            print(f"预测策略: {predicted_strategy}")
+            print(f"真实得分: {true_score}")
+            print(f"预测得分: {pred_score}")
+            print(f"得分差距: {score_gap}")
+            print("-" * 50)
+    
+    # 输出统计信息
+    total_error_cases = len(large_gap_cases)
+    print(f"\n分析总结:")
+    print(f"分析样本总数: {num_samples}")
+    print(f"发现差距大于{threshold}分的案例数: {total_error_cases}")
+    print(f"错误率: {(total_error_cases/num_samples)*100:.2f}%")
+    
+    if large_gap_cases:
+        # 计算平均差距
+        avg_gap = sum(case['score_gap'] for case in large_gap_cases) / len(large_gap_cases)
+        print(f"平均得分差距: {avg_gap:.2f}")
+        
+        # 找出差距最大的案例
+        max_gap_case = max(large_gap_cases, key=lambda x: x['score_gap'])
+        print(f"\n差距最大的案例:")
+        print(f"A: {max_gap_case['A']}")
+        print(f"B: {max_gap_case['B']}")
+        print(f"真实策略: {max_gap_case['true_strategy']}")
+        print(f"预测策略: {max_gap_case['predicted_strategy']}")
+        print(f"真实得分: {max_gap_case['true_score']}")
+        print(f"预测得分: {max_gap_case['predicted_score']}")
+        print(f"得分差距: {max_gap_case['score_gap']}")
+        
+        # 保存格式化的错误案例到JSON文件
+        import json
+        with open('../json/transformer_error_cases.json', 'w') as f:
+            json.dump(formatted_cases, f, indent=4)
+        print("\n错误案例已按指定格式保存到 transformer_error_cases.json")
+    
+    return large_gap_cases
+
 def Score_distribution(model_strategy):
-    re=[]
+    re = []
+    error_cases = []  # 新增：用于存储差距大的案例
+    
     for i in range(10000):
         A, B = deal_cards_tool()
-        if model_strategy==recursive_Strategy:
+        if model_strategy == recursive_Strategy:
             best_moves = model_strategy(A, B)
-        if model_strategy==GA_Strategy:
+        if model_strategy == GA_Strategy:
             best_moves = model_strategy(genome, A, B)
-        if model_strategy==Transformer:
+        if model_strategy == Transformer:
             best_moves = model_strategy(A, B)
-
+        # 填充策略
         # 提取已有的第一个元素
         existing_first_elements = {move[0] for move in best_moves}
 
@@ -67,14 +164,71 @@ def Score_distribution(model_strategy):
 
         # 填充 best_moves 至少 3 个子数组
         while len(best_moves) < 3:
-            first_element = missing_first_elements.pop(0)  # 获取缺失的第一个元素
-            best_moves.append([first_element, 0])  # 组合 [缺失的元素, 0]
+            first_element = missing_first_elements.pop(0)
+            best_moves.append([first_element, 0])
 
+        # 如果是Transformer模型，还要计算与真实得分的差距
+        if model_strategy == Transformer:
+            pred_score = strategy_scoring(A.copy(), B, best_moves)
+            true_strategy = recursive_Strategy(A, B)
+            true_score = strategy_scoring(A.copy(), B, true_strategy)
+            
+            # 检查得分差距
+            score_gap = abs(true_score - pred_score)
+            if score_gap >= 5:  # 差距阈值设为5
+                error_case = {
+                    'A': A,
+                    'B': B,
+                    'true_strategy': true_strategy,
+                    'predicted_strategy': best_moves,
+                    'true_score': true_score,
+                    'predicted_score': pred_score,
+                    'score_gap': score_gap
+                }
+                error_cases.append(error_case)
+                print(f"\n发现差距较大的案例 ({i+1}/10000):")
+                print(f"A: {A}")
+                print(f"B: {B}")
+                print(f"真实策略: {true_strategy}")
+                print(f"预测策略: {best_moves}")
+                print(f"真实得分: {true_score}")
+                print(f"预测得分: {pred_score}")
+                print(f"得分差距: {score_gap}")
+                print("-" * 50)
+        
         true_max_score = strategy_scoring(A, B, best_moves)
-        # if (max_score != true_max_score):
-        #     raise ValueError(f"递归计算的 max_score ({max_score}) 出错   ({A},{B},{best_moves})")
         print(f"{i} of {10000}")
         re.append(true_max_score)
+    
+    # 如果是Transformer模型，输出错误分析结果
+    if model_strategy == Transformer and error_cases:
+        total_error_cases = len(error_cases)
+        print(f"\n分析总结:")
+        print(f"分析样本总数: 10000")
+        print(f"发现差距大于5分的案例数: {total_error_cases}")
+        print(f"错误率: {(total_error_cases/10000)*100:.2f}%")
+        
+        # 计算平均差距
+        avg_gap = sum(case['score_gap'] for case in error_cases) / len(error_cases)
+        print(f"平均得分差距: {avg_gap:.2f}")
+        
+        # 找出差距最大的案例
+        max_gap_case = max(error_cases, key=lambda x: x['score_gap'])
+        print(f"\n差距最大的案例:")
+        print(f"A: {max_gap_case['A']}")
+        print(f"B: {max_gap_case['B']}")
+        print(f"真实策略: {max_gap_case['true_strategy']}")
+        print(f"预测策略: {max_gap_case['predicted_strategy']}")
+        print(f"真实得分: {max_gap_case['true_score']}")
+        print(f"预测得分: {max_gap_case['predicted_score']}")
+        print(f"得分差距: {max_gap_case['score_gap']}")
+        
+        # 保存错误案例到文件
+        import json
+        with open('transformer_prediction_errors.json', 'w') as f:
+            json.dump(error_cases, f, indent=2)
+        print("\n错误案例已保存到 transformer_prediction_errors.json")
+    
     return re
 
 
@@ -88,14 +242,14 @@ if __name__ == '__main__':
     model0=recursive_Strategy
 
 
-    # GA预测分布
-    file_name1 = 'Score_Distribution_GA.npy'
-    model1=GA_Strategy
+    # # GA预测分布
+    # file_name1 = 'Score_Distribution_GA.npy'
+    # model1=GA_Strategy
 
 
-    # # transformer预测分布
-    # file_name1 = 'Score_Distribution_Transformer_10k.npy'
-    # model1=Transformer
+    # transformer预测分布
+    file_name1 = 'Score_Distribution_Transformer_10k.npy'
+    model1=Transformer
 
 
     # 检查文件是否存在
@@ -129,103 +283,46 @@ if __name__ == '__main__':
 
     # 可视化分布
     # 绘制直方图
+    analyze_transformer_errors(Transformer)
+    if 1==0:
+        plt.figure(figsize=(10, 6))
 
-    plt.figure(figsize=(10, 6))
+        # 绘制第一组数据的直方图
+        bin = 19
+        plt.hist(data1, bins=bin, alpha=0.7, color='skyblue', label='Predicted Value By Model 1')
 
-    # 绘制第一组数据的直方图
-    bin = 19
-    plt.hist(data1, bins=bin, alpha=0.7, color='skyblue', label='Predicted Value By Model 1')
+        # 绘制第二组数据的直方图
+        plt.hist(data0, bins=bin, alpha=0.5, color='orange', label='Ground Truth')
 
-    # 绘制第二组数据的直方图
-    plt.hist(data0, bins=bin, alpha=0.5, color='orange', label='Ground Truth')
+        # 添加核密度估计（KDE）曲线
 
-    # 添加核密度估计（KDE）曲线
+        # 对 Data 1 进行 KDE
+        kde_data1 = gaussian_kde(data1)
+        x_vals = np.linspace(min(data1), max(data1), 1000)  # 生成平滑的 x 值
+        # 计算缩放因子
+        bin_width = (max(data1) - min(data1)) / bin
+        scaling_factor = len(data1) * bin_width
+        plt.plot(x_vals, kde_data1(x_vals) * scaling_factor, color='navy', label='KDE Predicted Value By Model 1')
 
-    # 对 Data 1 进行 KDE
-    kde_data1 = gaussian_kde(data1)
-    x_vals = np.linspace(min(data1), max(data1), 1000)  # 生成平滑的 x 值
-    # 计算缩放因子
-    bin_width = (max(data1) - min(data1)) / bin
-    scaling_factor = len(data1) * bin_width
-    plt.plot(x_vals, kde_data1(x_vals) * scaling_factor, color='navy', label='KDE Predicted Value By Model 1')
+        # 对 Data 0 进行 KDE
+        kde_data0 = gaussian_kde(data0)
+        bin_width = (max(data0) - min(data0)) / bin
+        scaling_factor = len(data0) * bin_width
+        plt.plot(x_vals, kde_data0(x_vals) * scaling_factor, color='darkorange', label='KDE Ground Truth')
 
-    # 对 Data 0 进行 KDE
-    kde_data0 = gaussian_kde(data0)
-    bin_width = (max(data0) - min(data0)) / bin
-    scaling_factor = len(data0) * bin_width
-    plt.plot(x_vals, kde_data0(x_vals) * scaling_factor, color='darkorange', label='KDE Ground Truth')
+        # 添加标题和坐标轴标签
+        plt.title("Score Distribution with KDE")
+        plt.xlabel("Score")
+        plt.ylabel("Frequency")
 
-    # 添加标题和坐标轴标签
-    plt.title("Score Distribution with KDE")
-    plt.xlabel("Score")
-    plt.ylabel("Frequency")
+        # 添加图例
+        plt.legend()
 
-    # 添加图例
-    plt.legend()
+        # 添加网格线
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
 
-    # 添加网格线
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
-
-    # 显示图表
-    plt.show()
-    # 构造正态分布的拟合
-
-    #
-    # # 将列表转换为 NumPy 数组
-    # data = np.array(data_raw)
-    # print(f"数据点数量: {len(data)}")
-    #
-    # # --- 2. 计算均值 (μ) 和标准差 (σ) ---
-    # # 对于正态分布，样本均值和样本标准差是其参数的最佳估计
-    # mu_fit = np.mean(data)
-    # sigma_fit = np.std(data)  # 注意：np.std 默认计算总体标准差 (ddof=0), 这通常用于拟合
-    #
-    # print(f"拟合得到的均值 (μ_fit): {mu_fit:.4f}")
-    # print(f"拟合得到的标准差 (σ_fit): {sigma_fit:.4f}")
-    #
-    # # --- 3. 得到正态分布的数学表达式 (概率密度函数 PDF) ---
-    # # 正态分布 PDF 公式: f(x | μ, σ) = (1 / (σ * sqrt(2π))) * exp(-(x - μ)² / (2 * σ²))
-    #
-    # # 构建包含拟合参数的表达式字符串
-    # expression = f"f(x) = (1 / ({sigma_fit:.4f} * sqrt(2*π))) * exp(-(x - {mu_fit:.4f})**2 / (2 * {sigma_fit:.4f}**2))"
-    # print("\n拟合的正态分布概率密度函数 (PDF) 表达式:")
-    # print(expression)
-    #
-    # # --- 4. (可选) 使用 SciPy 的 norm 对象进行计算和可视化 ---
-    #
-    # # 创建一个代表拟合后正态分布的 SciPy 对象
-    # fitted_distribution = norm(loc=mu_fit, scale=sigma_fit)
-    #
-    # # 你可以使用这个对象来计算特定点的概率密度值(PDF)或累积分布函数(CDF)等
-    # x_value = 110
-    # pdf_at_x = fitted_distribution.pdf(x_value)
-    # cdf_at_x = fitted_distribution.cdf(x_value)
-    # print(f"\n使用 SciPy 计算:")
-    # print(f"在 x = {x_value} 处的概率密度值 (PDF): {pdf_at_x:.6f}")
-    # print(f"x <= {x_value} 的累积概率 (CDF): {cdf_at_x:.6f}")
-    #
-    # # 可视化拟合效果
-    # print("\n正在生成可视化图表...")
-    # plt.figure(figsize=(12, 7))
-    #
-    # # 绘制数据的直方图 (归一化，使其面积为 1)
-    # # 可以调整 bins 的数量来改变直方图的精细度
-    # plt.hist(data, bins=18, density=True, alpha=0.7, color='skyblue', label='数据直方图 (归一化)')
-    #
-    # # 绘制拟合的正态分布 PDF 曲线
-    # xmin, xmax = plt.xlim()  # 获取直方图的 x 轴范围
-    # x_plot = np.linspace(xmin, xmax, 200)  # 在此范围内生成一系列 x 值
-    # pdf_plot = fitted_distribution.pdf(x_plot)  # 计算这些 x 值对应的 PDF 值
-    # plt.plot(x_plot, pdf_plot, 'r-', lw=2, label='拟合的正态分布 PDF 曲线')
-    #
-    # # 添加图例、标题和标签
-    # plt.title(f'数据分布与拟合的正态分布\n拟合参数: μ = {mu_fit:.4f}, σ = {sigma_fit:.4f}')
-    # plt.xlabel('数值')
-    # plt.ylabel('概率密度')
-    # plt.legend()
-    # plt.grid(True)
-    # plt.show()
-    # print("可视化图表显示完毕.")
+        # 显示图表
+        plt.show()
 
 
 

@@ -50,76 +50,53 @@ def get_updated_A_after_insertion(A, card_x, best_pos):
 
 # def choose_insertion(genome, A, B, x, remaining_B):
 # x是不能构成匹配的牌组成的数组
-def calculate_future_score(A, remaining_B, genome):
-    future_score = 0  # 初始化未来得分
+def calculate_future_score(A, remaining_B, genome, num_simulations=100):
+    """
+    使用蒙特卡罗方法估计未来得分
+    Args:
+        A: 当前A序列
+        remaining_B: 剩余的B卡牌
+        genome: 基因组权重
+        num_simulations: 模拟次数
+    Returns:
+        float: 估计的未来期望得分
+    """
     if len(remaining_B) == 0:
-        return future_score  # 如果没有剩余的B玩家的牌，返回0
-    if not set(A) & set(remaining_B):  # 如果 A 和 B 没有任何重复元素
-        return future_score
-      # 复制A玩家的牌以便模拟
-    simulated_B=remaining_B.copy()
+        return 0
     
-    if len(simulated_B) == 1:
-        card = simulated_B[0]  # 获取最后一张B玩家的牌
-        unmatched = card not in A  # 判断是否能匹配
-        if unmatched:
-            return future_score  # 如果不能匹配，返回0
-        else:
-            _,score=get_best_insertion_score(A, card)
-            return score
-            
-            
-
-    elif len(remaining_B) == 2:
-        card1, card2 = remaining_B  # 获取最后两张B玩家的牌
+    # 如果A和remaining_B没有重叠元素，直接返回0
+    if not set(A) & set(remaining_B):
+        return 0
         
-        unmatched1 = card1 not in A  # 判断第一张卡是否可以匹配
-        unmatched2 = card2 not in A  # 判断第二张卡是否可以匹配
-        
-        if unmatched1 and unmatched2:
-            return future_score  # 如果两张卡都不能匹配，返回0
-        
-        if unmatched1:#第一张可以匹配
-            
-            _, score1= get_best_insertion_score(A, card1) 
-            return score1+card2  # 第二张可以插到第一张的匹配里
-        
-        if unmatched2:
-            _, score2 = get_best_insertion_score(A, card2) 
-            return score2+card1  # 第一张可以插到第二张的匹配里
-        
-        # 如果两张卡都能匹配，分次插入，并返回较大得分
-        #先插入card1 计分  再往新的A中插入card2 计分
-        # get_updated_A_after_insertion(A, card_x, best_pos):
-        
-        # 先插入card1计算得分
-        bestpos,score_card1=get_best_insertion_score(A, card1)
-        # 插入card1后的A变成了什么
-        newA=get_updated_A_after_insertion(A,card1,bestpos)
-        # 把card2插入新的A
-        _,score_card2=get_best_insertion_score(newA, card2)
-        
-        # 计算它们的和
-        
-        best_score1 = score_card1+score_card2
-        
-        
-        # 先插入card2计算得分
-        bestpos,score_card2=get_best_insertion_score(A, card2)
-        # 插入card2后的A变成了什么
-        newA=get_updated_A_after_insertion(A,card2,bestpos)
-        # 把card1插入新的A
-        _,score_card1=get_best_insertion_score(newA, card1)
-        
-        # 计算它们的和
-        
-        best_score2 = score_card1+score_card2
-       
-       
-       
-        return max(best_score2, best_score1)
+    total_score = 0
     
-    return future_score  # 默认返回0
+    # 进行多次蒙特卡罗模拟
+    for _ in range(num_simulations):
+        # 复制当前状态以进行模拟
+        current_A = A.copy()
+        current_B = remaining_B.copy()
+        simulation_score = 0
+        
+        # 随机打乱B卡牌的顺序来模拟不同的出牌顺序
+        random.shuffle(current_B)
+        
+        # 模拟剩余的每一步
+        for card in current_B:
+            # 使用genome_choose_insertion来模拟决策
+            remaining = [b for b in current_B if b != card]
+            pos, score, new_A = genome_choose_insertion(genome, current_A, card, remaining)
+            
+            # 累加得分
+            simulation_score += score
+            current_A = new_A
+            
+        # 将本次模拟的得分加入总分
+        total_score += simulation_score
+    
+    # 返回平均得分作为期望值
+    expected_score = total_score / num_simulations
+    
+    return expected_score
 def simulate_insertion(A, x, pos):
     candidate_A = A.copy()  # 复制A玩家的牌以便模拟插入
 
