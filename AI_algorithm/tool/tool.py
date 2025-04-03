@@ -102,7 +102,18 @@ def load_best_genome(filename="../trained/best_genome.pkl"):
         # 捕获其他未知异常
         print(f"An unexpected error occurred while loading the file '{filename}': {e}")
 
+def complete_best_moves(best_moves):
+    # 提取已有的第一个元素
+    existing_first_elements = {move[0] for move in best_moves}
 
+    # 需要填充的第一个元素（确保 0, 1, 2 都存在）
+    missing_first_elements = [x for x in [0, 1, 2] if x not in existing_first_elements]
+
+    # 填充 best_moves 至少 3 个子数组
+    while len(best_moves) < 3:
+        first_element = missing_first_elements.pop(0)
+        best_moves.append([first_element, 0])
+    return best_moves
 def numsummery(results):
     mean_value = np.mean(results)
     median_value = np.median(results)

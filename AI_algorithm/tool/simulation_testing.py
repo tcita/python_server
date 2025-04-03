@@ -49,7 +49,7 @@ def strategy_scoring(A, B, strategy):
     return score1+score2+score3
     # print(f"总得分为: {score1 + score2 + score3}")
 
-def analyze_transformer_errors(model_strategy, threshold=5, num_samples=1000):
+def analyze_model_errors(model_strategy, threshold=5, num_samples=200000):
     """
     分析Transformer模型预测得分与真实得分差距较大的情况，并将结果保存为指定格式的JSON文件
     """
@@ -61,8 +61,14 @@ def analyze_transformer_errors(model_strategy, threshold=5, num_samples=1000):
         A, B = deal_cards_tool()
 
         # 获取模型预测的策略
-        if model_strategy == Transformer:
-            predicted_strategy = model_strategy(A, B)
+
+        predicted_strategy = model_strategy(A, B)
+        # 填充策略
+        existing_first_elements = {move[0] for move in predicted_strategy}
+        missing_first_elements = [x for x in [0, 1, 2] if x not in existing_first_elements]
+        while len(predicted_strategy) < 3:
+            first_element = missing_first_elements.pop(0)
+            predicted_strategy.append([first_element, 0])
 
         pred_score = strategy_scoring(A.copy(), B, predicted_strategy)
         # 计算真实的最优策略和得分
@@ -137,7 +143,13 @@ def analyze_transformer_errors(model_strategy, threshold=5, num_samples=1000):
         
         # 保存格式化的错误案例到JSON文件
         import json
-        with open('../json/transformer_error_cases.json', 'w') as f:
+
+        if model_strategy==Transformer:
+            filename = "../json/transformer_error_cases.json"
+        if model_strategy==GA_Strategy:
+            filename = "../json/GA_error_cases.json"
+
+        with open(filename, 'w') as f:
             json.dump(formatted_cases, f, indent=4)
         print("\n错误案例已按指定格式保存到 transformer_error_cases.json")
     
@@ -149,12 +161,9 @@ def Score_distribution(model_strategy):
     
     for i in range(10000):
         A, B = deal_cards_tool()
-        if model_strategy == recursive_Strategy:
-            best_moves = model_strategy(A, B)
-        if model_strategy == GA_Strategy:
-            best_moves = model_strategy(genome, A, B)
-        if model_strategy == Transformer:
-            best_moves = model_strategy(A, B)
+
+        best_moves = model_strategy(A, B)
+
         # 填充策略
         # 提取已有的第一个元素
         existing_first_elements = {move[0] for move in best_moves}
@@ -243,7 +252,7 @@ if __name__ == '__main__':
 
 
     # # GA预测分布
-    # file_name1 = 'Score_Distribution_GA.npy'
+    # file_name1 = 'Score_Distribution_GA_10k.npy'
     # model1=GA_Strategy
 
 
@@ -283,7 +292,7 @@ if __name__ == '__main__':
 
     # 可视化分布
     # 绘制直方图
-    analyze_transformer_errors(Transformer)
+    analyze_model_errors(model1)
     if 1==0:
         plt.figure(figsize=(10, 6))
 

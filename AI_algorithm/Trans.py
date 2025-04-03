@@ -555,7 +555,7 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
 
         pred_score = calculate_score(A, B, final_order, final_moves)
 
-        print(f"Transformer 预测 (6x3): A={A}, B={B} -> 策略={best_moves}, 预测得分={pred_score}")
+        # print(f"Transformer 预测 (6x3): A={A}, B={B} -> 策略={best_moves}, 预测得分={pred_score}")
 
         return best_moves, pred_score
     except Exception as e:

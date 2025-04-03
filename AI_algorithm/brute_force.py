@@ -1,8 +1,3 @@
-import random
-from collections import defaultdict
-
-
-import statistics
 
 from AI_algorithm.GA import simulate_insertion
 
