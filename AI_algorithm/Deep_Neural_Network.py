@@ -5,10 +5,12 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
+from torch.optim.lr_scheduler import CosineAnnealingLR
+import math
 
 from AI_algorithm.tool.tool import calculate_score_by_strategy
 
-jsonfilename="json/data_raw.json"
+jsonfilename="json/transformer_error_cases.json"
 GPUDEBUG_MODE = False  # 开启调试模式时设为True，关闭时设为False
 
 def conditional_print(*args, **kwargs):
@@ -111,6 +113,38 @@ def prepare_data(sample: dict):
     return input_vector, order_target, pos_target
 
 
+# 添加学习率预热函数
+class WarmupCosineScheduler:
+    """实现学习率预热和余弦退火的调度器"""
+    def __init__(self, optimizer, warmup_epochs, total_epochs, min_lr=1e-6, base_lr=0.01):
+        self.optimizer = optimizer
+        self.warmup_epochs = warmup_epochs
+        self.total_epochs = total_epochs
+        self.min_lr = min_lr
+        self.base_lr = base_lr
+        self.cosine_scheduler = CosineAnnealingLR(optimizer, 
+                                                 T_max=total_epochs-warmup_epochs, 
+                                                 eta_min=min_lr)
+        self.current_epoch = 0
+        
+    def step(self):
+        """更新学习率"""
+        if self.current_epoch < self.warmup_epochs:
+            # 预热阶段：线性增加学习率
+            lr = self.min_lr + (self.base_lr - self.min_lr) * (self.current_epoch / self.warmup_epochs)
+            for param_group in self.optimizer.param_groups:
+                param_group['lr'] = lr
+        else:
+            # 余弦退火阶段
+            self.cosine_scheduler.step()
+        
+        self.current_epoch += 1
+        
+    def get_lr(self):
+        """获取当前学习率"""
+        return self.optimizer.param_groups[0]['lr']
+
+
 def train_model(train_data, epochs=2000, batch_size=512, model_path="./trained/move_predictor.pth"):
     input_size = 9
     model = MovePredictor(input_size).to(device)
@@ -119,7 +153,14 @@ def train_model(train_data, epochs=2000, batch_size=512, model_path="./trained/m
     conditional_print("显存已分配总量:", torch.cuda.memory_allocated() / 1e6, "MB")  # 当前显存分配
     conditional_print("显存峰值:", torch.cuda.max_memory_allocated() / 1e6, "MB")  # 历史最大显存使用
 
-    optimizer = optim.Adam(model.parameters(), lr=0.01)
+    # 初始化优化器
+    base_lr = 0.01
+    optimizer = optim.Adam(model.parameters(), lr=base_lr)
+    
+    # 设置学习率调度器，预热期为总训练轮数的10%
+    warmup_epochs = int(epochs * 0.1)
+    scheduler = WarmupCosineScheduler(optimizer, warmup_epochs, epochs, min_lr=1e-6, base_lr=base_lr)
+    
     order_criterion = nn.CrossEntropyLoss().to(device)
     pos_criterion = nn.MSELoss().to(device)
     # pos_criterion = nn.CrossEntropyLoss().to(device)
@@ -140,7 +181,7 @@ def train_model(train_data, epochs=2000, batch_size=512, model_path="./trained/m
                 inputs.append(input_vec)
                 order_targets.append(order_tgt)
                 pos_targets.append(pos_tgt)
-            #
+            
             # # 打印调试信息
             # print("Order Targets Shapes:", [len(ot) for ot in order_targets])
             # print("Position Targets Shapes:", [len(pt) for pt in pos_targets])
@@ -180,10 +221,14 @@ def train_model(train_data, epochs=2000, batch_size=512, model_path="./trained/m
 
             total_loss += loss.item()
             batch_count += 1
+        
+        # 每个epoch结束后更新学习率
+        scheduler.step()
 
         if epoch % 100 == 0:
             avg_loss = total_loss / batch_count if batch_count > 0 else total_loss
-            print(f"Epoch {epoch}, Loss: {avg_loss:.4f}")
+            current_lr = scheduler.get_lr()
+            print(f"Epoch {epoch}, Loss: {avg_loss:.4f}, LR: {current_lr:.6f}")
 
     torch.save(model.state_dict(), model_path)
     print(f"模型已保存至 {model_path}")
@@ -243,7 +288,7 @@ def train():
         print("未找到json文件，请确保文件存在")
         exit(1)
 
-    train_model(train_data, epochs=2500, batch_size=1024, model_path="./trained/move_predictor.pth")
+    train_model(train_data, epochs=800, batch_size=1024, model_path="./trained/move_predictor.pth")
 
 
 if __name__ == "__main__":

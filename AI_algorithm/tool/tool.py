@@ -70,6 +70,7 @@ def deal_cards_tool():
             A.append(card)
 
     available_A = [card for card in deck if card in a_unique]
+    # 第一张牌必须是与A中某张牌数字相同的牌
     selected = random.choice(available_A)
     deck.remove(selected)  # 从剩余牌中移除选中的牌
     B = [selected]

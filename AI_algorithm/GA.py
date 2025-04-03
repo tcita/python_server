@@ -228,55 +228,46 @@ def simulate_insertion(A, x, pos):
 # remaining_B  还未被插入得分的B中的元素
 def genome_choose_insertion(genome, A, x, remaining_B):
     best_value, best_move = -float('inf'), None  # 初始化最佳评估值和最佳移动
-    # pin=x
-    # unmatched_cards = [card for card in remaining_B if card not in A]  # 找到B中在A中没有匹配的牌
-
-    # if unmatched_cards:
-    #     x = max(unmatched_cards)  # 如果存在未匹配的牌，优先选择其中值更大的牌
-
+    
     # 计算新增特征
     sum_A = sum(A)  # A的元素总和
 
     # 计算B的元素总和 (当前x + 剩余的B)
     B_elements = [x] + remaining_B
-    sum_B = sum(B_elements)  # B的元素总和
+    # sum_B = sum(B_elements)  # B的元素总和 - 已移除
 
     # 计算B与A的交集的数量
     intersection_count = len(set(B_elements) & set(A))
 
-    # 获取B的每个元素在A中的位置
-    B_positions_in_A = []
-    for b_card in B_elements:
-        positions = [i for i, a_card in enumerate(A) if a_card == b_card]
-        if positions:
-            B_positions_in_A.extend(positions)
+    # 获取B的每个元素在A中的位置 - 已移除
+    # B_positions_in_A = []
+    # for b_card in B_elements:
+    #     positions = [i for i, a_card in enumerate(A) if a_card == b_card]
+    #     if positions:
+    #         B_positions_in_A.extend(positions)
 
-    # 如果没有B元素在A中，使用-1作为默认值
-    avg_position = sum(B_positions_in_A) / len(B_positions_in_A) if B_positions_in_A else -1
+    # 如果没有B元素在A中，使用-1作为默认值 - 已移除
+    # avg_position = sum(B_positions_in_A) / len(B_positions_in_A) if B_positions_in_A else -1
 
     possible_moves = []  # 存储所有候选插入位置的得分
 
     # 从位置0开始插入  现在可以从0开始了
     for pos in range(0, len(A) + 1):  # 尝试所有可能的插入位置
         score, removal_length, new_length, match_found, new_A = simulate_insertion(A, x, pos)  # 模拟插入并获取结果
-        # print(f"x is {x}")
         current_score = score  # 当前得分
 
         future_score = calculate_future_score(new_A, remaining_B)  # 计算未来的得分
 
-        # 新的特征向量，增加了4个特征
+        # 修改为6个特征向量
         features = np.array([
             current_score,       # 当前得分
-            removal_length,     # 移除长度
-            new_length,         # 新长度
-            match_found,        # 是否找到匹配
-            future_score,       # 未来得分
-            sum_A,              # A的元素总和
-            sum_B,              # B的元素总和
-            intersection_count, # B与A的交集数量
-            avg_position        # B元素在A中的平均位置
+            removal_length,      # 移除长度
+            new_length,          # 新长度
+            future_score,        # 未来得分
+            sum_A,               # A的元素总和
+            intersection_count,  # B与A的交集数量
         ], dtype=float)  # 特征向量
-        
+
         value = np.dot(genome, features)  # 基因组的评估值
 
         possible_moves.append((value, pos, current_score, new_A))  # 将当前插入位置及其得分保存到列表中
@@ -285,7 +276,7 @@ def genome_choose_insertion(genome, A, x, remaining_B):
     if possible_moves:
         best_move = max(possible_moves, key=lambda move: move[0])
 
-    # 当 A 为空时 ，此时无法进行任何插入操作，导致 possible_moves 为空，进而 best_move 未被更新，保持初始值 None
+    #  处理找不到插入位置的情况
     if best_move is None:
         # possible_moves = []
         # for pos in range(1, len(A) + 1):  # 尝试所有可能的插入位置
@@ -337,8 +328,8 @@ def evaluate_genome(genome, num_rounds=1000):
         real_score = calculate_score_by_strategy(A, B, strategy)
         total_scores.append(real_score)
     
-    # 返回加权平均得分
-    return np.median(total_scores) * 0.7 + np.mean(total_scores) * 0.3
+    # 调整权重，增加平均值的比例以提高整体得分
+    return np.median(total_scores) * 0.5 + np.mean(total_scores) * 0.5
 
 
 # 使用多进程评估基因组适应度
@@ -414,6 +405,8 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
             parent1, parent2 = random.sample(selected, 2)
             child = [(p1 + p2) / 2 if random.random() < 0.7 else p1 
                     for p1, p2 in zip(parent1, parent2)]
+            # 修复变异部分的错误
+            mutation_strength = 0.7  # 增加变异强度
             child = [gene + random.gauss(0, mutation_strength) for gene in child]
             next_population.append(child)
         
@@ -561,7 +554,7 @@ def cmaes_evolve(population, fitnesses, pop_size, num_rounds=1000, num_processes
     sigma = max(0.1, 0.8 - 0.6 * progress_ratio)  # 从0.8逐渐降低到0.2
     
     # 初始化协方差矩阵为单位矩阵
-    C = np.identity(n)  # 协方差矩阵
+    C = np.identity(n)
     
     # 计算种群中个体与均值的差异，构建协方差矩阵
     if pop_size > 1:  # 确保有足够样本计算协方差
@@ -601,7 +594,7 @@ def cmaes_evolve(population, fitnesses, pop_size, num_rounds=1000, num_processes
 # 遗传算法过程
 def genetic_algorithm(pop_size=1000, generations=60, num_rounds=1000, elitism_ratio=0.1, tournament_size=3,
                       num_processes=8, evolution_methods=['standard', 'island', 'de', 'cmaes'], 
-                      method_probs=[0.35, 0.30, 0.25, 0.10] , early_stop_generations=10, early_stop_threshold=0.01):
+                      method_probs=[0.35, 0.30, 0.25, 0.10] , early_stop_generations=5, early_stop_threshold=0.01):
     """
     遗传算法主函数
     
@@ -621,7 +614,17 @@ def genetic_algorithm(pop_size=1000, generations=60, num_rounds=1000, elitism_ra
     - best_genome: 最佳基因组
     """
     start_time = time.time()  # 记录开始时间
-    population = [[random.uniform(-1, 1) for _ in range(9)] for _ in range(pop_size)]  # 初始化种群，特征数从5增加到9
+    # 在genetic_algorithm函数中修改初始化种群的代码
+    population = []
+    for _ in range(pop_size):
+        # 为当前得分和未来得分特征赋予更高的初始权重
+        genome = []
+        for i in range(6):
+            if i == 0 or i == 3:  # 当前得分和未来得分的索引
+                genome.append(random.uniform(0, 2))  # 更高的正向权重
+            else:
+                genome.append(random.uniform(-1, 1))
+        population.append(genome)
     best_fitness_history, avg_fitness_history = [], []  # 初始化历史最佳适应度和平均适应度列表
     best_genome, best_fitness = None, -float('inf')  # 初始化最佳基因组和最佳适应度
     elitism_count = int(elitism_ratio * pop_size)  # 计算精英数量
@@ -710,8 +713,8 @@ def save_best_genome(best_genome, filename="trained/best_genome.pkl"):
     
     # 打印基因组各特征的权重
     feature_names = [
-        "当前得分", "移除长度", "新长度", "是否找到匹配", "未来得分", 
-        "A元素总和", "B元素总和", "B与A交集数量", "B元素在A中的平均位置"
+        "当前得分", "移除长度", "新长度",  "未来得分",
+        "A元素总和",  "B与A交集数量"
     ]
     
     print("\n基因组特征权重:")
