@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
+import torch.nn.functional as F
 
 from AI_algorithm.tool.tool import calculate_score_by_strategy
 
@@ -12,7 +13,101 @@ from AI_algorithm.tool.tool import calculate_score_by_strategy
 # from AI_algorithm.tool.tool import calculate_score_by_strategy
 # 为了代码能独立运行，这里提供一个模拟的函数
 
+def score_based_loss(order_logits, pos_preds, A_list, B_list, target_scores):
+    """
+    基于真实得分计算的损失函数
 
+    参数:
+    - order_logits: 形状为 [batch_size, num_b, num_b] 的顺序预测输出
+    - pos_preds: 形状为 [batch_size, num_b] 的位置预测输出
+    - A_list: 包含每个样本A序列的列表
+    - B_list: 包含每个样本B序列的列表
+    - target_scores: 每个样本的目标得分
+
+    返回:
+    - 基于得分的损失张量
+    """
+    batch_size = order_logits.size(0)
+    batch_losses = []
+    
+    for i in range(batch_size):
+        A = A_list[i]
+        B = B_list[i]
+        target_score = float(target_scores[i])  # 确保是浮点数
+        
+        order_logits_sample = order_logits[i].unsqueeze(0).detach()
+        pred_order = sample_order(order_logits_sample).squeeze(0).cpu().detach().numpy()
+        
+        pos_preds_sample = pos_preds[i].cpu().detach().numpy()
+        pred_moves = [int(np.clip(p, 0, len(A) + k)) for k, p in enumerate(pos_preds_sample)]
+        
+        pred_strategy = [[int(pred_order[j]), pred_moves[j]] for j in range(len(pred_order))]
+        
+        try:
+            pred_score = float(calculate_score_by_strategy(A.copy(), B, pred_strategy))  # 确保是浮点数
+            sample_loss = float((pred_score - target_score) ** 2)  # 确保是浮点数
+        except Exception as e:
+            print(f"计算得分时出错: {e}")
+            sample_loss = 100.0
+            
+        batch_losses.append(sample_loss)
+    
+    # 直接使用FloatTensor，并且创建一个新的可导的连接点
+    if batch_losses:
+        loss_tensor = torch.FloatTensor(batch_losses).to(order_logits.device)
+        # 创建一个新的计算节点以连接梯度
+        return loss_tensor.mean() * (order_logits.sum() / order_logits.sum().detach())
+    else:
+        # 确保返回的零也是连接到计算图的
+        return 0.0 * (order_logits.sum() / order_logits.sum().detach())
+
+def score_based_loss_cuda(order_logits, pos_preds, A_tensor, B_tensor, target_scores):
+    """
+    基于得分的损失函数 - CUDA加速版本
+    
+    参数:
+    - order_logits: [batch_size, num_b, num_b] 顺序预测
+    - pos_preds: [batch_size, num_b] 位置预测
+    - A_tensor: [batch_size, num_a] A序列，已转到GPU
+    - B_tensor: [batch_size, num_b] B序列，已转到GPU
+    - target_scores: [batch_size] 目标得分
+    """
+    batch_size = order_logits.size(0)
+    
+    # 使用softmax+argmax获取最佳顺序预测 (保留梯度连接)
+    order_probs = F.softmax(order_logits, dim=2)
+    _, pred_indices = torch.max(order_probs, dim=2)
+    
+    # 位置预测处理 (裁剪到合理范围)
+    # 假设每个样本的A长度都是num_a
+    num_a = A_tensor.size(1)
+    num_b = B_tensor.size(1)
+    
+    # 创建位置范围上限张量 [num_b]
+    pos_range = torch.arange(num_b, device=order_logits.device).float() + num_a
+    # 将位置预测裁剪到合理范围 [batch_size, num_b]
+    clipped_positions = torch.min(torch.max(pos_preds, torch.zeros_like(pos_preds)), pos_range)
+    
+    # 构建可微分的损失函数
+    # 使用预测顺序和位置的概率加权平均
+    pred_order_probs = torch.gather(order_probs, 2, pred_indices.unsqueeze(-1)).squeeze(-1)
+    
+    # 使用MSE替代直接计算score (作为近似)
+    # 1. 顺序损失 - 监督信号
+    order_mse = F.mse_loss(pred_order_probs, torch.ones_like(pred_order_probs))
+    
+    # 2. 位置损失 - 监督信号
+    pos_mse = F.mse_loss(clipped_positions, pos_preds)
+    
+    # 3. 目标分数引导的损失
+    # 将目标分数归一化到[0,1]
+    normalized_scores = target_scores / 100.0  # 假设最高分是100
+    
+    # 根据目标分数调整损失权重 (高分样本给予更高权重)
+    score_weights = 0.5 + normalized_scores * 1.5
+    weighted_loss = (order_mse + pos_mse) * score_weights
+    
+    return weighted_loss.mean()
 
 jsonfilename="json/data_raw.json" # 请确保你的 JSON 文件路径正确
 GPUDEBUG_MODE = True
@@ -267,7 +362,8 @@ def lr_warmup(epoch, lr_max, warmup_epochs):
 
 # 修改训练函数中的模型初始化部分
 def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/transformer_move_predictor_6x3.pth",
-                num_a=6, num_b=3, warmup_epochs=100, lr_max=0.0001, lr_min=0.0000005):
+                num_a=6, num_b=3, warmup_epochs=50, lr_max=0.0001, lr_min=0.0000005,
+                score_weight=0.5):
     """
     训练 Transformer 模型 (针对 A=6, B=3)
     允许手动终止训练 (`Ctrl+C`) 并保存当前进度
@@ -316,6 +412,7 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
                 batch = train_data[i:i + batch_size]
                 inputs, order_targets, pos_targets = [], [], []
                 sample_weights = []  # 添加样本权重列表
+                A_list, B_list, target_scores = [], [], []  # 新增列表收集A、B和目标得分
                 
                 for sample in batch:
                     input_seq, order_tgt, pos_tgt = prepare_data_transformer(sample, num_a=num_a, num_b=num_b)
@@ -325,13 +422,15 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
                     order_targets.append(order_tgt)
                     pos_targets.append(pos_tgt)
                     
+                    # 保存A、B和目标得分
+                    A_list.append(sample["A"])
+                    B_list.append(sample["B"])
+                    target_scores.append(sample.get("max_score", 60))
+                    
                     # 根据样本分数设置权重
                     score = sample.get("max_score", 60)
-                    # 低分样本权重略微增加，但不要太激进
-                    # 调整权重计算公式以匹配实际数据分布（最低分约20分）
-                    weight = 1.0 + max(0, (40 - score) / 40)  # 20分时权重为1.5，40分及以上权重为1.0
-                    
-                    
+                    # 修改权重计算，高分样本权重更高
+                    weight = 1.0 + max(0, (score - 40) / 40)  # 80分时权重为2.0，40分及以下权重为1.0
                     sample_weights.append(weight)
                 
                 if not inputs:
@@ -355,16 +454,29 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
                 optimizer.zero_grad()
                 order_logits, pos_preds = model(inputs)
 
-                # 计算加权损失
+                # 计算损失
                 order_loss = order_criterion(order_logits, order_targets)
                 pos_loss = pos_criterion(pos_preds, pos_targets)
-                
-                # 应用样本权重  使用时将(order_loss + pos_loss)*sample_weights
-                sample_weights = torch.tensor(sample_weights, device=device)
 
+                # 将A和B转换为张量并移至GPU
+                A_tensor = torch.tensor([A_list[i] for i in range(len(A_list))], device=device)
+                B_tensor = torch.tensor([B_list[i] for i in range(len(B_list))], device=device)
+                target_scores_tensor = torch.as_tensor(target_scores, dtype=torch.float32, device=device)
 
-                weighted_loss = (order_loss + pos_loss)
-                loss = weighted_loss.mean()
+                # 计算基于得分的损失 (CUDA加速版本)
+                score_loss = score_based_loss_cuda(order_logits, pos_preds, A_tensor, B_tensor, target_scores_tensor)
+
+                # 在训练循环中
+                if epoch < warmup_epochs:
+                    # 初始阶段：以标准损失为主
+                    loss = order_loss + pos_loss + 0.1 * score_loss
+                elif epoch < warmup_epochs + 200:
+                    # 中间阶段：逐渐增加得分损失权重
+                    score_weight_dynamic = 0.1 + (epoch - warmup_epochs) * 0.002  # 逐渐从0.1增加到0.5
+                    loss = order_loss + pos_loss + score_weight_dynamic * score_loss
+                else:
+                    # 后期阶段：以得分损失为主
+                    loss = 0.5 * (order_loss + pos_loss) + score_weight * score_loss
 
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -590,3 +702,4 @@ if __name__ == "__main__":
     #      print(f"测试预测时发生错误: {e}")
     #      import traceback
     #      traceback.print_exc()
+

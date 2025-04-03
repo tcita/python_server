@@ -88,13 +88,15 @@ if __name__ == '__main__':
     model0=recursive_Strategy
 
 
-    # # GA预测分布
-    # file_name = 'Score_Distribution_GA.npy'
-    # model=GA_Strategy
+    # GA预测分布
+    file_name1 = 'Score_Distribution_GA.npy'
+    model1=GA_Strategy
 
-    # transformer预测分布
-    file_name1 = 'Score_Distribution_Transformer_10k.npy'
-    model1=Transformer
+
+    # # transformer预测分布
+    # file_name1 = 'Score_Distribution_Transformer_10k.npy'
+    # model1=Transformer
+
 
     # 检查文件是否存在
     if os.path.exists(file_name1):
