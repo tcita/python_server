@@ -3,8 +3,6 @@ import random
 import numpy as np
 import torch
 
-# from AI_algorithm.Trans import TransformerMovePredictor, Transformer_predict
-
 
 def simulate_insertion_tool(A, x, pos):
 

@@ -315,8 +315,30 @@ def simulate_round(genome):
 
 # 评估基因组的适应度
 def evaluate_genome(genome, num_rounds=1000):
-    scores = [simulate_round(genome) for _ in range(num_rounds)]  # 运行多次模拟并记录得分
-    return np.median(scores) * 0.7 + np.mean(scores) * 0.3  # 计算加权平均得分
+    total_scores = []
+    for _ in range(num_rounds):
+        A, B = deal_cards()  # 发牌
+        
+        # 获取策略
+        strategy = []
+        A_copy = A.copy()
+        for i, x in enumerate(B):
+            remaining_B = B[i + 1:]
+            pos, score, A_copy = genome_choose_insertion(genome, A_copy, x, remaining_B)
+            strategy.append((i, pos))
+        
+        # 确保策略包含3个元素
+        while len(strategy) < 3:
+            missing_idx = next(i for i in range(3) if i not in [s[0] for s in strategy])
+            strategy.append((missing_idx, 0))
+        
+        # 使用tool.py中的函数计算真实得分
+        from AI_algorithm.tool.tool import calculate_score_by_strategy
+        real_score = calculate_score_by_strategy(A, B, strategy)
+        total_scores.append(real_score)
+    
+    # 返回加权平均得分
+    return np.median(total_scores) * 0.7 + np.mean(total_scores) * 0.3
 
 
 # 使用多进程评估基因组适应度
