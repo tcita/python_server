@@ -81,10 +81,6 @@ def get_best_insertion_score(A, card):
     return best_pos, max_score
 
 
-def get_updated_A_after_insertion(A, card_x, best_pos):
-    # 调用 simulate_insertion 来插入 x 到 A 的最佳位置并获取新的 A
-    _, _, _, _, new_A = simulate_insertion(A, card_x, best_pos)
-    return new_A
 
 
 # def choose_insertion(genome, A, B, x, remaining_B):
@@ -139,7 +135,8 @@ def calculate_future_score(A, remaining_B):
         # 先插入card1计算得分
         bestpos, score_card1 = get_best_insertion_score(A, card1)
         # 插入card1后的A变成了什么
-        newA = get_updated_A_after_insertion(A, card1, bestpos)
+
+        _, _, _, _, newA = simulate_insertion(A, card1, bestpos)
         # 把card2插入新的A
         _, score_card2 = get_best_insertion_score(newA, card2)
 
@@ -150,7 +147,7 @@ def calculate_future_score(A, remaining_B):
         # 先插入card2计算得分
         bestpos, score_card2 = get_best_insertion_score(A, card2)
         # 插入card2后的A变成了什么
-        newA = get_updated_A_after_insertion(A, card2, bestpos)
+        _, _, _, _, newA = simulate_insertion(A, card2, bestpos)
         # 把card1插入新的A
         _, score_card1 = get_best_insertion_score(newA, card1)
 
@@ -457,7 +454,7 @@ def evaluate_genomes_with_processes(population, num_rounds=1000, num_processes=8
 
 # 岛屿模型实现，用于增加种群多样性
 def island_model_evolution(population, fitnesses, pop_size, tournament_size, mutation_strength,
-                           num_rounds, num_processes, islands=4, migration_interval=5, migration_rate=0.1,
+                           num_rounds, num_processes, islands=4, migration_interval=10, migration_rate=0.1,
                            generation=0, max_generations=60):
     """
     实现岛屿模型进化，将总人口分成几个独立'岛屿'，定期交换个体
@@ -708,9 +705,9 @@ def cmaes_evolve(population, fitnesses, pop_size, num_rounds=1000, num_processes
 
 
 # 遗传算法过程
-def genetic_algorithm(pop_size=1000, generations=60, num_rounds=1000, elitism_ratio=0.1, tournament_size=3,
+def genetic_algorithm(pop_size=600, generations=60, num_rounds=500, elitism_ratio=0.1, tournament_size=3,
                       num_processes=8, evolution_methods=['standard', 'island', 'de', 'cmaes'],
-                      method_probs=[0.35, 0.30, 0.25, 0.10] , early_stop_generations=5, early_stop_threshold=0.01):
+                      method_probs=[0.35, 0.30, 0.25, 0.10] , early_stop_generations=7, early_stop_threshold=0.01):
     """
     遗传算法主函数
 

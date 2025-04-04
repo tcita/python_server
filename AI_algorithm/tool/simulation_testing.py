@@ -294,6 +294,10 @@ if __name__ == '__main__':
     # for value, count in frequency.most_common(10):
     #     print(f"值: {value}, 频率: {count}")
 
+    # 可视化分布
+    # 绘制直方图
+    analyze_model_errors(model1)
+
 
 
 
