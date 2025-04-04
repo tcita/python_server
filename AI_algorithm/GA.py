@@ -4,9 +4,6 @@ import time
 import pickle
 from multiprocessing import Pool
 import scipy.linalg
-import json
-import os
-
 
 
 # ---------------------------
@@ -368,9 +365,9 @@ def GA(genome, A, B):
 def GA_Strategy(best_genome=None, A=[], B=[]):
     if best_genome is None:
         raise ValueError("Genome没有初始化!")
-    
+
     print("-" * 20)
-    
+
     # 使用贪心策略直接决定处理顺序，而不是穷举所有可能性
     A_copy = A.copy()
     current_score = 0
@@ -707,7 +704,7 @@ def cmaes_evolve(population, fitnesses, pop_size, num_rounds=1000, num_processes
 # 遗传算法过程
 def genetic_algorithm(pop_size=600, generations=60, num_rounds=500, elitism_ratio=0.1, tournament_size=3,
                       num_processes=8, evolution_methods=['standard', 'island', 'de', 'cmaes'],
-                      method_probs=[0.35, 0.30, 0.25, 0.10] , early_stop_generations=7, early_stop_threshold=0.01):
+                      method_probs=[0.25, 0.45, 0.10, 0.20] , early_stop_generations=7, early_stop_threshold=0.01):
     """
     遗传算法主函数
 
