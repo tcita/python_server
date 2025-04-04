@@ -49,7 +49,7 @@ def strategy_scoring(A, B, strategy):
     return score1+score2+score3
     # print(f"总得分为: {score1 + score2 + score3}")
 
-def analyze_model_errors(model_strategy, threshold=5, num_samples=200000):
+def analyze_model_errors(model_strategy, threshold=5, num_samples=10000):
     """
     分析Transformer模型预测得分与真实得分差距较大的情况，并将结果保存为指定格式的JSON文件
     """
@@ -61,8 +61,11 @@ def analyze_model_errors(model_strategy, threshold=5, num_samples=200000):
         A, B = deal_cards_tool()
 
         # 获取模型预测的策略
-
-        predicted_strategy = model_strategy(A, B)
+        if(model_strategy==GA_Strategy):
+            genome = load_best_genome()
+            predicted_strategy = model_strategy(genome,A, B)
+        else:
+            predicted_strategy = model_strategy(A, B)
         # 填充策略
         existing_first_elements = {move[0] for move in predicted_strategy}
         missing_first_elements = [x for x in [0, 1, 2] if x not in existing_first_elements]
@@ -140,18 +143,19 @@ def analyze_model_errors(model_strategy, threshold=5, num_samples=200000):
         print(f"真实得分: {max_gap_case['true_score']}")
         print(f"预测得分: {max_gap_case['predicted_score']}")
         print(f"得分差距: {max_gap_case['score_gap']}")
-        
-        # 保存格式化的错误案例到JSON文件
-        import json
 
-        if model_strategy==Transformer:
-            filename = "../json/transformer_error_cases.json"
-        if model_strategy==GA_Strategy:
-            filename = "../json/GA_error_cases.json"
-
-        with open(filename, 'w') as f:
-            json.dump(formatted_cases, f, indent=4)
-        print("\n错误案例已按指定格式保存到 transformer_error_cases.json")
+        # 保存错误案例
+        # # 保存格式化的错误案例到JSON文件
+        # import json
+        #
+        # if model_strategy==Transformer:
+        #     filename = "../json/transformer_error_cases.json"
+        # if model_strategy==GA_Strategy:
+        #     filename = "../json/GA_error_cases.json"
+        #
+        # with open(filename, 'w') as f:
+        #     json.dump(formatted_cases, f, indent=4)
+        # print("\n错误案例已按指定格式保存到 transformer_error_cases.json")
     
     return large_gap_cases
 
@@ -251,14 +255,14 @@ if __name__ == '__main__':
     model0=recursive_Strategy
 
 
-    # # GA预测分布
-    # file_name1 = 'Score_Distribution_GA_10k.npy'
-    # model1=GA_Strategy
+    # GA预测分布
+    file_name1 = 'Score_Distribution_GA_10k.npy'
+    model1=GA_Strategy
 
 
-    # transformer预测分布
-    file_name1 = 'Score_Distribution_Transformer_10k.npy'
-    model1=Transformer
+    # # transformer预测分布
+    # file_name1 = 'Score_Distribution_Transformer_10k.npy'
+    # model1=Transformer
 
 
     # 检查文件是否存在
@@ -290,48 +294,6 @@ if __name__ == '__main__':
     # for value, count in frequency.most_common(10):
     #     print(f"值: {value}, 频率: {count}")
 
-    # 可视化分布
-    # 绘制直方图
-    analyze_model_errors(model1)
-    if 1==0:
-        plt.figure(figsize=(10, 6))
-
-        # 绘制第一组数据的直方图
-        bin = 19
-        plt.hist(data1, bins=bin, alpha=0.7, color='skyblue', label='Predicted Value By Model 1')
-
-        # 绘制第二组数据的直方图
-        plt.hist(data0, bins=bin, alpha=0.5, color='orange', label='Ground Truth')
-
-        # 添加核密度估计（KDE）曲线
-
-        # 对 Data 1 进行 KDE
-        kde_data1 = gaussian_kde(data1)
-        x_vals = np.linspace(min(data1), max(data1), 1000)  # 生成平滑的 x 值
-        # 计算缩放因子
-        bin_width = (max(data1) - min(data1)) / bin
-        scaling_factor = len(data1) * bin_width
-        plt.plot(x_vals, kde_data1(x_vals) * scaling_factor, color='navy', label='KDE Predicted Value By Model 1')
-
-        # 对 Data 0 进行 KDE
-        kde_data0 = gaussian_kde(data0)
-        bin_width = (max(data0) - min(data0)) / bin
-        scaling_factor = len(data0) * bin_width
-        plt.plot(x_vals, kde_data0(x_vals) * scaling_factor, color='darkorange', label='KDE Ground Truth')
-
-        # 添加标题和坐标轴标签
-        plt.title("Score Distribution with KDE")
-        plt.xlabel("Score")
-        plt.ylabel("Frequency")
-
-        # 添加图例
-        plt.legend()
-
-        # 添加网格线
-        plt.grid(axis='y', linestyle='--', alpha=0.7)
-
-        # 显示图表
-        plt.show()
 
 
 

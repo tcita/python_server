@@ -288,7 +288,7 @@ def train():
         print("未找到json文件，请确保文件存在")
         exit(1)
 
-    train_model(train_data, epochs=800, batch_size=1024, model_path="./trained/move_predictor.pth")
+    train_model(train_data, epochs=1000, batch_size=1024, model_path="./trained/move_predictor.pth")
 
 
 if __name__ == "__main__":

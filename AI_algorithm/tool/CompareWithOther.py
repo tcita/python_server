@@ -19,7 +19,7 @@ from AI_algorithm.brute_force import recursive_StrategyAndScore
 from AI_algorithm.server import load_model_from_memory
 from AI_algorithm.tool.tool import load_best_genome, deal_cards_tool, simulate_insertion_tool, complete_best_moves
 
-genome_loaded = load_best_genome()
+
 
 
 def strategy_TrueScore(A, B, strategy):
@@ -147,7 +147,7 @@ def compute_statistical_tests(data_of_algorithm_1, data_recursive):
 
 
 
-def Compare_TwoModel(model, other_model, rounds=1000,plot=false):
+def Compare_TwoModel(model, other_model, rounds=1000, plot=False):
     print("开始Compare_TwoModel测试...")  # 确保函数被调用
 
     test_scores_1 = []
@@ -192,25 +192,24 @@ def Compare_TwoModel(model, other_model, rounds=1000,plot=false):
         print(f" 算法2得分 ：{score_2}")
         print('-' * 20)
         # 检查差距过大的策略
-        print("这样的移动造成了相对于真实值较低的得分")
+
         if(true_score-score_1>=10 ):
             print("算法1得分较低")
             print(A)
             print(B)
-            print(f" 算法1  ：{move_1}")
-            print(f" 真实最佳移动：{true_move}")
-            print(f" 真实值：{true_score}")
-            print(f" 算法1 得分：{score_1}")
+            print("算法1这样的移动造成了相对于真实值较低的得分")
+            print(f" 算法1的预测移动和预测得分  ：{move_1},{score_1}")
+            print(f" 但是真实最佳移动和真实值是：{true_move},{true_score}")
 
 
         if(true_score-score_2>=10):
             print("算法2得分较低")
             print(A)
             print(B)
-            print(f" 算法2  ：{move_2}")
-            print(f" 真实最佳移动：{true_move}")
-            print(f" 真实值：{true_score}")
-            print(f" 算法2 得分：{score_2}")
+            print("算法2这样的移动造成了相对于真实值较低的得分")
+            print(f" 算法2的预测移动和预测得分  ：{move_2},{score_2}")
+            print(f" 但是真实最佳移动和真实值是：{true_move},{true_score}")
+
             print('-'*20)
 
         test_scores_1.append(score_1)
@@ -261,38 +260,120 @@ def Compare_TwoModel(model, other_model, rounds=1000,plot=false):
     # 统计检验分析
     print("-" * 20)
     print("\n【算法1与真实值的偏差分析】\n")
-    print("*所有偏差均按照“真实值相应数据减去预测值相应数据”的方式计算")
+    print("*所有偏差均按照真实值相应数据减去预测值相应数据的方式计算")
     compute_statistical_tests(data_1, data_true)
     print("-" * 20)
     print("\n【算法2与真实值的偏差分析】\n")
-    print("*所有偏差均按照“真实值相应数据减去预测值相应数据”的方式计算")
+    print("*所有偏差均按照真实值相应数据减去预测值相应数据的方式计算")
     compute_statistical_tests(data_2, data_true)
+   
+    # 添加可视化部分
     if plot:
-        # 绘制每一轮测试的得分折线图
-        print("绘制每一轮测试得分图...")
-
-        plt.rc('font', family='YouYuan')
-        rounds_range = np.arange(1, rounds + 1)
-        plt.figure(figsize=(12, 6))
-
-        # 绘制散点图
-        plt.scatter(rounds_range, all_true_scores, color='red', label='真实得分')  # 使用 scatter 绘制散点
-        plt.scatter(rounds_range, all_scores_1, color='blue', label='算法1 得分')
-        plt.scatter(rounds_range, all_scores_2, color='green', label='算法2 得分')
-
-        plt.xlabel('测试轮次')
-        plt.ylabel('得分')
-        plt.title('每一轮测试的得分分布')
-        plt.legend()
-        plt.grid(True)
+        # 计算准确率指标
+        error_1 = data_true - data_1
+        error_2 = data_true - data_2
+        
+        # 相对误差百分比
+        rel_error_1 = (data_true - data_1) / (data_true + 1e-10) * 100  # 避免除零
+        rel_error_2 = (data_true - data_2) / (data_true + 1e-10) * 100
+        
+        # 创建一个2x2的图表布局，增加图表大小和间距
+        fig, axs = plt.subplots(2, 2, figsize=(20, 15))
+        plt.subplots_adjust(hspace=0.3, wspace=0.3)  # 增加子图之间的间距
+        
+        # 设置全局字体大小
+        plt.rcParams.update({'font.size': 12})
+        
+        # 1. 箱线图比较
+        axs[0, 0].boxplot([data_true, data_1, data_2], labels=['Ground Truth', 'Algorithm 1', 'Algorithm 2'])
+        axs[0, 0].set_title('Score Distribution Boxplot', fontsize=14)
+        axs[0, 0].set_ylabel('Score', fontsize=12)
+        axs[0, 0].tick_params(axis='both', labelsize=11)
+        axs[0, 0].grid(True, linestyle='--', alpha=0.7)
+        
+        # 2. 误差分布直方图 - 算法1
+        axs[0, 1].hist(error_1, bins=30, alpha=0.7, color='blue')
+        axs[0, 1].axvline(x=0, color='red', linestyle='--')
+        axs[0, 1].set_title('Algorithm 1 Error Distribution', fontsize=14)
+        axs[0, 1].set_xlabel('Error (Ground Truth - Predicted)', fontsize=12)
+        axs[0, 1].set_ylabel('Frequency', fontsize=12)
+        axs[0, 1].tick_params(axis='both', labelsize=11)
+        axs[0, 1].grid(True, linestyle='--', alpha=0.7)
+        
+        # 3. 误差分布直方图 - 算法2
+        axs[1, 0].hist(error_2, bins=30, alpha=0.7, color='green')
+        axs[1, 0].axvline(x=0, color='red', linestyle='--')
+        axs[1, 0].set_title('Algorithm 2 Error Distribution', fontsize=14)
+        axs[1, 0].set_xlabel('Error (Ground Truth - Predicted)', fontsize=12)
+        axs[1, 0].set_ylabel('Frequency', fontsize=12)
+        axs[1, 0].tick_params(axis='both', labelsize=11)
+        axs[1, 0].grid(True, linestyle='--', alpha=0.7)
+        
+        # 4. 相对误差累积分布
+        # 计算各个误差范围内的样本比例
+        error_ranges = [0, 5, 10, 15, 20, 30, 50, 100]
+        algo1_in_range = []
+        algo2_in_range = []
+        
+        for err_range in error_ranges:
+            algo1_in_range.append(np.mean(np.abs(rel_error_1) <= err_range) * 100)
+            algo2_in_range.append(np.mean(np.abs(rel_error_2) <= err_range) * 100)
+        
+        axs[1, 1].plot(error_ranges, algo1_in_range, 'o-', label='Algorithm 1')
+        axs[1, 1].plot(error_ranges, algo2_in_range, 's-', label='Algorithm 2')
+        axs[1, 1].set_title('Cumulative Relative Error Distribution', fontsize=11)
+        axs[1, 1].set_xlabel('Relative Error Range (%)', fontsize=12)
+        axs[1, 1].set_ylabel('Sample Percentage (%)', fontsize=12)
+        axs[1, 1].tick_params(axis='both', labelsize=11)
+        axs[1, 1].legend(fontsize=12)
+        axs[1, 1].grid(True, linestyle='--', alpha=0.7)
+        
+        plt.tight_layout(pad=3.0)  # 增加边距
+        plt.savefig('model_comparison_results.png', dpi=300, bbox_inches='tight')
         plt.show()
+        
+        # 额外创建一个图表展示预测准确度随真实值变化的趋势，同样增加图表大小
+        plt.figure(figsize=(16, 10))
+        
+        # 按真实值大小排序
+        sorted_indices = np.argsort(data_true)
+        sorted_true = data_true[sorted_indices]
+        sorted_pred1 = data_1[sorted_indices]
+        sorted_pred2 = data_2[sorted_indices]
+        
+        # 计算移动平均以平滑曲线
+        window_size = min(50, len(sorted_true) // 10)  # 动态调整窗口大小
+        if window_size < 1:
+            window_size = 1
+            
+        def moving_average(data, window_size):
+            return np.convolve(data, np.ones(window_size)/window_size, mode='valid')
+        
+        if len(sorted_true) > window_size:
+            ma_true = moving_average(sorted_true, window_size)
+            ma_pred1 = moving_average(sorted_pred1, window_size)
+            ma_pred2 = moving_average(sorted_pred2, window_size)
+            
+            plt.plot(ma_true, label='Ground Truth', color='black', linewidth=2)
+            plt.plot(ma_pred1, label='Algorithm 1', color='blue', alpha=0.8)
+            plt.plot(ma_pred2, label='Algorithm 2', color='green', alpha=0.8)
+            plt.title('Prediction vs Ground Truth (Moving Average, Sorted by Ground Truth)', fontsize=16)
+            plt.xlabel('Sample Index (Sorted by Ground Truth)', fontsize=14)
+            plt.ylabel('Score', fontsize=14)
+            plt.legend(fontsize=12)
+            plt.xticks(fontsize=12)
+            plt.yticks(fontsize=12)
+            plt.grid(True, linestyle='--', alpha=0.7)
+            plt.tight_layout(pad=3.0)
+            plt.savefig('prediction_trend.png', dpi=300, bbox_inches='tight')
+            plt.show()
 
     print("测试完成！")
 
 
 
 def genome(A,B):
-    best_genome = genome_loaded
+    best_genome = load_best_genome()
     move=GA_Strategy(best_genome, A, B)
     return move
 
@@ -330,24 +411,24 @@ def Transformer(A, B):
 
     # 专门预测低分的模型
 
-    score1=strategy_TrueScore(A,B,move1)
-    move2=DNN(A,B)
-    move2=complete_best_moves(move2)
-    score2=strategy_TrueScore(A,B,move2)
+    # score1=strategy_TrueScore(A,B,move1)
+    # move2=DNN(A,B)
+    # move2=complete_best_moves(move2)
+    # score2=strategy_TrueScore(A,B,move2)
 
     #
     # move2=GA_Strategy(A, B)
     # move2=complete_best_moves(move2)
     # score2=strategy_TrueScore(A,B,move2)
 
-    if(score1<score2 ):
-        print(f"assist win {A},{B}")
-
-        print(f"Transformer得分：{score1}")
-        print(f"assist得分：{score2}")
-        return move2
-    else:
-        return move1
+    # if(score1<score2 ):
+    #     print(f"assist win {A},{B}")
+    #
+    #     print(f"Transformer得分：{score1}")
+    #     print(f"assist得分：{score2}")
+    #     return move2
+    # else:
+    #     return move1
     return move1
 
     #
@@ -386,7 +467,7 @@ if __name__ == "__main__":
 
 
 
-    Compare_TwoModel(Transformer,Transformer,rounds=1000,plot=False)
+    Compare_TwoModel(genome,Transformer,rounds=1000,plot=True)
     # A=[7, 9, 5, 13, 3, 10]
     # B=[7, 5, 5]
     # A=[11, 5, 13, 10, 1, 12]

@@ -260,7 +260,7 @@ def genome_choose_insertion(genome, A, x, remaining_B):
 
         # 修改为6个特征向量
         features = np.array([
-            current_score,       # 当前得分
+            current_score,       # 当前得分 (就是移除的子列表的总分)
             removal_length,      # 移除长度
             new_length,          # 新长度
             future_score,        # 未来得分
@@ -284,7 +284,7 @@ def genome_choose_insertion(genome, A, x, remaining_B):
         #     possible_moves.append((score, pos, new_A))  # 将当前插入位置及其得分保存到列表中
 
         # 默认插入到末尾，否则没有返回值
-
+        print("No suitable insertion position found.")
         return len(A), 0, A
 
         # best_move = max(possible_moves, key=lambda move: move[0])
@@ -293,41 +293,157 @@ def genome_choose_insertion(genome, A, x, remaining_B):
     return pos, score, new_A  # 返回最佳插入位置、得分和新牌堆
 
 
-# 模拟一轮游戏
-def simulate_round(genome):
-    A, B = deal_cards()  # 发牌
-    round_score = 0  # 初始化本轮得分
-    for i, x in enumerate(B):  # 遍历B玩家的每一张牌
-        remaining_B = B[i + 1:]  # 获取后续未处理的B牌
-        pos, score, A = genome_choose_insertion(genome, A, x, remaining_B)  # 选择最优插入位置并更新牌堆
-        round_score += score  # 累加得分
-    return round_score  # 返回本轮总得分
+# # 模拟一轮游戏
+# def simulate_round(genome):
+#     A, B = deal_cards()  # 发牌
+#     round_score = 0  # 初始化本轮得分
+#     for i, x in enumerate(B):  # 遍历B玩家的每一张牌
+#         remaining_B = B[i + 1:]  # 获取后续未处理的B牌
+#         pos, score, A = genome_choose_insertion(genome, A, x, remaining_B)  # 选择最优插入位置并更新牌堆
+#         round_score += score  # 累加得分
+#     return round_score  # 返回本轮总得分
 
 
 # 评估基因组的适应度
+def try_all_card_orders(genome, A, B, return_strategy=False):
+    """
+    尝试所有可能的B牌处理顺序，返回最高得分和相应策略
+    
+    参数：
+    - genome: 基因组
+    - A: A玩家的牌
+    - B: B玩家的牌
+    - return_strategy: 是否返回策略
+    
+    返回：
+    - best_score: 最高得分
+    - best_strategy: 最佳策略（如果return_strategy=True）
+    - best_final_A: 最终A牌状态（如果return_strategy=True）
+    """
+    import itertools
+    
+    # 获取所有可能的B牌处理顺序
+    all_orders = list(itertools.permutations(range(len(B))))
+    
+    best_score = -float('inf')
+    best_strategy = None
+    best_final_A = None
+    
+    # 尝试每种可能的顺序
+    for order in all_orders:
+        A_copy = A.copy()
+        current_score = 0
+        current_strategy = []
+        
+        # 按照当前顺序处理B牌
+        for idx in order:
+            x = B[idx]
+            # 计算剩余未处理的B牌
+            remaining_indices = [i for i in order if order.index(i) > order.index(idx)]
+            remaining_B = [B[i] for i in remaining_indices]
+            
+            # 对B中的特定元素x选择最优插入位置
+            pos, score, A_copy = genome_choose_insertion(genome, A_copy, x, remaining_B)
+            current_score += score
+            current_strategy.append((idx, pos))
+        
+        # 如果当前顺序得分更高，更新最佳策略
+        if current_score > best_score:
+            best_score = current_score
+            best_strategy = current_strategy
+            best_final_A = A_copy
+    
+
+    if return_strategy:
+        return best_score, best_strategy, best_final_A
+    else:
+        return best_score
+
+
+# 修改后的GA函数
+def GA(genome, A, B):
+    """
+    尝试所有可能的B牌处理顺序，返回最高得分
+    """
+    return try_all_card_orders(genome, A, B, return_strategy=False)
+
+# 修改后的GA_Strategy函数
+def GA_Strategy(best_genome=None, A=[], B=[]):
+    if best_genome is None:
+        raise ValueError("Genome没有初始化!")
+    
+    print("-" * 20)
+    
+    # 使用贪心策略直接决定处理顺序，而不是穷举所有可能性
+    A_copy = A.copy()
+    current_score = 0
+    strategy = []
+
+    # 计算每张B牌的评估值
+    card_values = []
+    for i, card in enumerate(B):
+        # 对每张牌，计算其在不同位置插入的最大评估值
+        remaining_B = [B[j] for j in range(len(B)) if j != i]
+        best_value = -float('inf')
+        best_pos = -1
+        best_score = 0
+        best_new_A = None
+
+        for pos in range(len(A_copy) + 1):
+            score, removal_length, new_length, match_found, new_A = simulate_insertion(A_copy, card, pos)
+            future_score = calculate_future_score(new_A, remaining_B)
+
+            # 计算特征向量 - 这里充分利用了基因组的权重
+            sum_A = sum(A_copy)
+            intersection_count = len(set([card] + remaining_B) & set(A_copy))
+
+            features = np.array([
+                score,               # 当前得分
+                removal_length,      # 移除长度
+                new_length,          # 新长度
+                future_score,        # 未来得分
+                sum_A,               # A的元素总和
+                intersection_count,  # B与A的交集数量
+            ], dtype=float)
+
+            # 使用基因组权重评估当前插入位置的价值
+            value = np.dot(best_genome, features)
+
+            if value > best_value:
+                best_value = value
+                best_pos = pos
+                best_score = score
+                best_new_A = new_A
+
+        card_values.append((i, best_value, best_pos, best_score, best_new_A))
+
+    # 根据评估值排序B牌 - 这里使用基因组评估的价值来决定处理顺序
+    card_values.sort(key=lambda x: x[1], reverse=True)
+
+    # 按照排序后的顺序处理B牌
+    for i, _, pos, score, new_A in card_values:
+        strategy.append((i, pos))
+        current_score += score
+        A_copy = new_A
+
+    print(f"基因组贪心策略: {strategy}, 预估得分: {current_score}")
+
+    return strategy  # 返回最佳策略
+
+# 修改后的evaluate_genome函数
 def evaluate_genome(genome, num_rounds=1000):
     total_scores = []
     for _ in range(num_rounds):
         A, B = deal_cards()  # 发牌
-        
-        # 获取策略
-        strategy = []
-        A_copy = A.copy()
-        for i, x in enumerate(B):
-            remaining_B = B[i + 1:]
-            pos, score, A_copy = genome_choose_insertion(genome, A_copy, x, remaining_B)
-            strategy.append((i, pos))
-        
-        # 确保策略包含3个元素
-        while len(strategy) < 3:
-            missing_idx = next(i for i in range(3) if i not in [s[0] for s in strategy])
-            strategy.append((missing_idx, 0))
-        
+
+        # 使用封装的函数获取最佳策略
+        _, best_strategy, _ = try_all_card_orders(genome, A, B, return_strategy=True)
+
         # 使用tool.py中的函数计算真实得分
         from AI_algorithm.tool.tool import calculate_score_by_strategy
-        real_score = calculate_score_by_strategy(A, B, strategy)
+        real_score = calculate_score_by_strategy(A, B, best_strategy)
         total_scores.append(real_score)
-    
+
     # 调整权重，增加平均值的比例以提高整体得分
     return np.median(total_scores) * 0.5 + np.mean(total_scores) * 0.5
 
@@ -345,7 +461,7 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
                            generation=0, max_generations=60):
     """
     实现岛屿模型进化，将总人口分成几个独立'岛屿'，定期交换个体
-    
+
     参数：
     - population: 当前种群
     - fitnesses: 当前种群的适应度值
@@ -357,7 +473,7 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
     - migration_rate: 每次迁移的个体比例
     - generation: 当前代数
     - max_generations: 最大代数
-    
+
     返回：
     - new_population: 进化后的新种群
     - new_fitnesses: 新种群的适应度
@@ -365,104 +481,104 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
     # 动态调整迁移率 - 随着进化过程增加交流
     progress_ratio = generation / max_generations if max_generations > 0 else 0.5
     adaptive_migration_rate = migration_rate * (1.0 + progress_ratio)  # 迁移率逐渐增加到原来的2倍
-    
+
     # 计算每个岛屿的规模和迁移数量
     island_size = pop_size // islands
     migration_size = int(island_size * adaptive_migration_rate)
-    
+
     # 将总人口分割成岛屿
     island_populations = []
     island_fitnesses = []
-    
+
     for i in range(islands):
         start_idx = i * island_size
         end_idx = start_idx + island_size if i < islands - 1 else pop_size
         island_populations.append(population[start_idx:end_idx])
         island_fitnesses.append(fitnesses[start_idx:end_idx])
-    
+
     # 每个岛屿独立进化
     new_island_populations = []
     new_island_fitnesses = []
-    
+
     for i in range(islands):
         # 岛内进化
         # 选择精英
-        sorted_indices = sorted(range(len(island_fitnesses[i])), 
+        sorted_indices = sorted(range(len(island_fitnesses[i])),
                               key=lambda k: island_fitnesses[i][k], reverse=True)
         elitism_count = int(0.1 * len(island_populations[i]))
         elites = [island_populations[i][idx] for idx in sorted_indices[:elitism_count]]
-        
+
         # 锦标赛选择
         selected = []
         for _ in range(len(island_populations[i]) - elitism_count):
             candidates = random.sample(range(len(island_populations[i])), tournament_size)
             winner_idx = max(candidates, key=lambda idx: island_fitnesses[i][idx])
             selected.append(island_populations[i][winner_idx])
-        
+
         # 交叉和变异
         next_population = elites.copy()
         while len(next_population) < len(island_populations[i]):
             parent1, parent2 = random.sample(selected, 2)
-            child = [(p1 + p2) / 2 if random.random() < 0.7 else p1 
+            child = [(p1 + p2) / 2 if random.random() < 0.7 else p1
                     for p1, p2 in zip(parent1, parent2)]
             # 修复变异部分的错误
             mutation_strength = 0.7  # 增加变异强度
             child = [gene + random.gauss(0, mutation_strength) for gene in child]
             next_population.append(child)
-        
+
         new_island_populations.append(next_population)
-    
+
     # 评估新岛屿种群适应度
-    new_island_fitnesses = [evaluate_genomes_with_processes(pop, num_rounds, num_processes) 
+    new_island_fitnesses = [evaluate_genomes_with_processes(pop, num_rounds, num_processes)
                            for pop in new_island_populations]
-    
+
     # 迁移过程 (如果当前代数是迁移间隔的倍数)
     # 注意：在实际使用时，需要传入当前代数作为参数，这里假设每次调用都执行迁移
     for i in range(islands):
         # 选择当前岛屿的最佳个体进行迁移
-        sorted_indices = sorted(range(len(new_island_fitnesses[i])), 
+        sorted_indices = sorted(range(len(new_island_fitnesses[i])),
                               key=lambda k: new_island_fitnesses[i][k], reverse=True)
         migrants_indices = sorted_indices[:migration_size]
         migrants = [new_island_populations[i][idx] for idx in migrants_indices]
-        
+
         # 将个体迁移到下一个岛屿(环形拓扑)
         target_island = (i + 1) % islands
-        
+
         # 在目标岛屿中，替换最差的个体
-        target_sorted_indices = sorted(range(len(new_island_fitnesses[target_island])), 
+        target_sorted_indices = sorted(range(len(new_island_fitnesses[target_island])),
                                      key=lambda k: new_island_fitnesses[target_island][k])
         for j, migrant in enumerate(migrants):
             if j < len(target_sorted_indices):
                 replace_idx = target_sorted_indices[j]
                 new_island_populations[target_island][replace_idx] = migrant
-    
+
     # 重新评估迁移后的适应度
-    new_island_fitnesses = [evaluate_genomes_with_processes(pop, num_rounds, num_processes) 
+    new_island_fitnesses = [evaluate_genomes_with_processes(pop, num_rounds, num_processes)
                            for pop in new_island_populations]
-    
+
     # 合并所有岛屿种群
     new_population = []
     new_fitnesses = []
     for pop, fit in zip(new_island_populations, new_island_fitnesses):
         new_population.extend(pop)
         new_fitnesses.extend(fit)
-    
+
     # 如果合并后的种群大小超过了原始种群大小，截断到原始大小
     if len(new_population) > pop_size:
         combined = list(zip(new_population, new_fitnesses))
         sorted_combined = sorted(combined, key=lambda x: x[1], reverse=True)
         new_population = [x[0] for x in sorted_combined[:pop_size]]
         new_fitnesses = [x[1] for x in sorted_combined[:pop_size]]
-    
+
     return new_population, new_fitnesses
 
 
 # 差分进化算法实现
-def differential_evolution(population, fitnesses, pop_size, F=0.8, CR=0.5, num_rounds=1000, 
+def differential_evolution(population, fitnesses, pop_size, F=0.8, CR=0.5, num_rounds=1000,
                           num_processes=8, generation=0, max_generations=60):
     """
     实现差分进化算法
-    
+
     参数：
     - population: 当前种群
     - fitnesses: 当前种群的适应度值
@@ -473,7 +589,7 @@ def differential_evolution(population, fitnesses, pop_size, F=0.8, CR=0.5, num_r
     - num_processes: 处理器数量
     - generation: 当前代数
     - max_generations: 最大代数
-    
+
     返回：
     - new_population: 进化后的新种群
     - new_fitnesses: 新种群的适应度
@@ -482,26 +598,26 @@ def differential_evolution(population, fitnesses, pop_size, F=0.8, CR=0.5, num_r
     progress_ratio = generation / max_generations if max_generations > 0 else 0.5
     adaptive_F = F * (1.0 - 0.3 * progress_ratio)  # F从初始值逐渐降低30%
     adaptive_CR = min(0.9, CR + 0.3 * progress_ratio)  # CR从初始值逐渐增加，最大到0.9
-    
+
     new_population = []
-    
+
     # 为每个个体进行差分进化
     for i in range(pop_size):
         target = population[i]
-        
+
         # 随机选择三个不同的个体，且与当前个体不同
         candidates = list(range(pop_size))
         candidates.remove(i)
         a, b, c = random.sample(candidates, 3)
-        
+
         # 选择的三个个体
         x_a = population[a]
         x_b = population[b]
         x_c = population[c]
-        
+
         # 生成突变向量，使用动态调整的F
         mutant = [x_a[j] + adaptive_F * (x_b[j] - x_c[j]) for j in range(len(target))]
-        
+
         # 交叉操作，使用动态调整的CR
         trial = []
         for j in range(len(target)):
@@ -509,18 +625,18 @@ def differential_evolution(population, fitnesses, pop_size, F=0.8, CR=0.5, num_r
                 trial.append(mutant[j])
             else:
                 trial.append(target[j])
-        
+
         new_population.append(trial)
-    
+
     # 评估新种群
     new_fitnesses = evaluate_genomes_with_processes(new_population, num_rounds, num_processes)
-    
+
     # 选择操作：如果新个体更好，则替换旧个体
     for i in range(pop_size):
         if fitnesses[i] > new_fitnesses[i]:
             new_population[i] = population[i]
             new_fitnesses[i] = fitnesses[i]
-    
+
     return new_population, new_fitnesses
 
 
@@ -528,7 +644,7 @@ def differential_evolution(population, fitnesses, pop_size, F=0.8, CR=0.5, num_r
 def cmaes_evolve(population, fitnesses, pop_size, num_rounds=1000, num_processes=8, generation=0, max_generations=60):
     """
     实现协方差矩阵自适应进化策略(CMA-ES)
-    
+
     参数：
     - population: 当前种群
     - fitnesses: 当前种群的适应度值
@@ -537,7 +653,7 @@ def cmaes_evolve(population, fitnesses, pop_size, num_rounds=1000, num_processes
     - num_processes: 处理器数量
     - generation: 当前代数
     - max_generations: 最大代数
-    
+
     返回：
     - new_population: 进化后的新种群
     - new_fitnesses: 新种群的适应度
@@ -548,28 +664,28 @@ def cmaes_evolve(population, fitnesses, pop_size, num_rounds=1000, num_processes
     for ind in population:
         mean += np.array(ind)
     mean /= pop_size
-    
+
     # 动态调整步长sigma，随着进化过程逐渐减小
     progress_ratio = generation / max_generations if max_generations > 0 else 0.5
     sigma = max(0.1, 0.8 - 0.6 * progress_ratio)  # 从0.8逐渐降低到0.2
-    
+
     # 初始化协方差矩阵为单位矩阵
     C = np.identity(n)
-    
+
     # 计算种群中个体与均值的差异，构建协方差矩阵
     if pop_size > 1:  # 确保有足够样本计算协方差
         diff_matrix = np.array([np.array(ind) - mean for ind in population])
         C = np.cov(diff_matrix.T) + 1e-8 * np.identity(n)  # 添加小值避免奇异矩阵
-    
+
     # 生成新种群
     new_population = []
-    
+
     # 特征值分解
     try:
         eigvals, eigvecs = scipy.linalg.eigh(C)
         # 确保特征值为正
         eigvals = np.maximum(eigvals, 1e-8)
-        
+
         # 生成新的个体
         for _ in range(pop_size):
             # 生成标准正态分布的随机向量
@@ -584,20 +700,20 @@ def cmaes_evolve(population, fitnesses, pop_size, num_rounds=1000, num_processes
         for _ in range(pop_size):
             new_ind = list(mean + sigma * np.random.randn(n))
             new_population.append(new_ind)
-    
+
     # 评估新种群
     new_fitnesses = evaluate_genomes_with_processes(new_population, num_rounds, num_processes)
-    
+
     return new_population, new_fitnesses
 
 
 # 遗传算法过程
 def genetic_algorithm(pop_size=1000, generations=60, num_rounds=1000, elitism_ratio=0.1, tournament_size=3,
-                      num_processes=8, evolution_methods=['standard', 'island', 'de', 'cmaes'], 
+                      num_processes=8, evolution_methods=['standard', 'island', 'de', 'cmaes'],
                       method_probs=[0.35, 0.30, 0.25, 0.10] , early_stop_generations=5, early_stop_threshold=0.01):
     """
     遗传算法主函数
-    
+
     参数：
     - pop_size: 种群大小
     - generations: 最大进化代数
@@ -609,7 +725,7 @@ def genetic_algorithm(pop_size=1000, generations=60, num_rounds=1000, elitism_ra
     - method_probs: 各进化方法的使用概率
     - early_stop_generations: 早停的连续代数
     - early_stop_threshold: 早停的改善阈值
-    
+
     返回：
     - best_genome: 最佳基因组
     """
@@ -629,7 +745,7 @@ def genetic_algorithm(pop_size=1000, generations=60, num_rounds=1000, elitism_ra
     best_genome, best_fitness = None, -float('inf')  # 初始化最佳基因组和最佳适应度
     elitism_count = int(elitism_ratio * pop_size)  # 计算精英数量
     method_history = []  # 记录每代使用的进化方法
-    
+
     # 早停相关变量
     early_stop_counter = 0
     last_best_fitness = -float('inf')
@@ -642,14 +758,14 @@ def genetic_algorithm(pop_size=1000, generations=60, num_rounds=1000, elitism_ra
 
         # 早停检查
         improvement = gen_best - last_best_fitness
-        
+
         # 修复除法错误
         if last_best_fitness != -float('inf') and abs(last_best_fitness) > 1e-10:
             relative_improvement = improvement / abs(last_best_fitness)
         else:
             # 第一代或last_best_fitness接近0或无穷时，使用绝对改善判断
             relative_improvement = 1.0 if improvement > early_stop_threshold else 0.0
-        
+
         if relative_improvement <= early_stop_threshold:
             early_stop_counter += 1
             if early_stop_counter >= early_stop_generations:
@@ -657,7 +773,7 @@ def genetic_algorithm(pop_size=1000, generations=60, num_rounds=1000, elitism_ra
                 break
         else:
             early_stop_counter = 0  # 重置计数器
-        
+
         last_best_fitness = gen_best
 
         if gen_best > best_fitness:  # 更新最佳基因组和适应度
@@ -702,7 +818,7 @@ def genetic_algorithm(pop_size=1000, generations=60, num_rounds=1000, elitism_ra
 
     # 分析不同进化方法的性能
     analyze_evolution_methods(best_fitness_history, method_history)
-    
+
     return best_genome  # 返回最佳基因组
 
 
@@ -710,13 +826,13 @@ def save_best_genome(best_genome, filename="trained/best_genome.pkl"):
     with open(filename, 'wb') as file:
         pickle.dump(best_genome, file)  # 保存最佳基因组到文件
     print(f"Best genome saved to {filename}")  # 打印保存信息
-    
+
     # 打印基因组各特征的权重
     feature_names = [
         "当前得分", "移除长度", "新长度",  "未来得分",
         "A元素总和",  "B与A交集数量"
     ]
-    
+
     print("\n基因组特征权重:")
     for i, (name, weight) in enumerate(zip(feature_names, best_genome)):
         print(f"{name}: {weight:.4f}")
@@ -726,20 +842,20 @@ def save_best_genome(best_genome, filename="trained/best_genome.pkl"):
 def analyze_evolution_methods(best_fitness_history, method_history):
     """
     分析不同进化方法的性能
-    
+
     参数：
     - best_fitness_history: 每代的最佳适应度历史记录
     - method_history: 每代使用的进化方法历史记录
     """
     import matplotlib.pyplot as plt
-    
+
     # 按照进化方法分组
     method_performance = {}
     for method, fitness in zip(method_history, best_fitness_history):
         if method not in method_performance:
             method_performance[method] = []
         method_performance[method].append(fitness)
-    
+
     # 计算每种方法的平均性能和最大性能
     print("\n各进化方法性能分析:")
     for method, fitnesses in method_performance.items():
@@ -747,17 +863,44 @@ def analyze_evolution_methods(best_fitness_history, method_history):
         max_fitness = max(fitnesses)
         improve_rate = (fitnesses[-1] - fitnesses[0]) / fitnesses[0] if len(fitnesses) > 1 else 0
         print(f"{method}方法: 平均适应度={avg_fitness:.2f}, 最大适应度={max_fitness:.2f}, 改进率={improve_rate:.2%}")
-    
+
 
 
 
 def GA(genome, A, B):
-    round_score = 0  # 初始化本轮得分
-    for i, x in enumerate(B):  # 遍历B玩家的每一张牌
-        remaining_B = B[i + 1:]  # 获取后续未处理的B牌
-        pos, score, A = genome_choose_insertion(genome, A, x, remaining_B)  # 选择最优插入位置并更新牌堆
-        round_score += score  # 累加得分
-    return round_score  # 返回本轮总得分
+    """
+    尝试所有可能的B牌处理顺序，返回最高得分
+    """
+    import itertools
+
+    # 获取所有可能的B牌处理顺序
+    all_orders = list(itertools.permutations(range(len(B))))
+
+    best_score = -float('inf')
+    best_A = None
+
+    # 尝试每种可能的顺序
+    for order in all_orders:
+        A_copy = A.copy()
+        current_score = 0
+
+        # 按照当前顺序处理B牌
+        for idx in order:
+            x = B[idx]
+            # 计算剩余未处理的B牌
+            remaining_indices = [i for i in order if i > order.index(idx)]
+            remaining_B = [B[i] for i in remaining_indices]
+
+            # 选择最优插入位置
+            pos, score, A_copy = genome_choose_insertion(genome, A_copy, x, remaining_B)
+            current_score += score
+
+        # 如果当前顺序得分更高，更新最佳得分
+        if current_score > best_score:
+            best_score = current_score
+            best_A = A_copy
+
+    return best_score  # 返回最高得分
 
 def load_best_genome(filename="../trained/best_genome.pkl"):
     try:
@@ -779,29 +922,68 @@ def load_best_genome(filename="../trained/best_genome.pkl"):
         # 捕获其他未知异常
         print(f"An unexpected error occurred while loading the file '{filename}': {e}")
 
-genome = load_best_genome
-def GA_Strategy(best_genome=genome, A=[], B=[]):
-    round_score = 0
-    num_moves = 0
-    strategy = []  # 用于存储i和pos的值
+
+def GA_Strategy(best_genome=None, A=[], B=[]):
+    if best_genome is None:
+        raise ValueError("Genome没有初始化!")
+
     print("-" * 20)
-    for i, x in enumerate(B):
-        remaining_B = B[i + 1:]
-        pos, score, A = genome_choose_insertion(best_genome, A, x, remaining_B)
 
-        # # 打印移动信息
-        # print(f"Move {num_moves + 1}: Insert card {x} at position {pos}")
+    # 使用贪心策略直接决定处理顺序，而不是穷举所有可能性
+    A_copy = A.copy()
+    current_score = 0
+    strategy = []
 
-        # 更新得分和移动次数
-        round_score += score
-        num_moves += 1
+    # 计算每张B牌的评估值
+    card_values = []
+    for i, card in enumerate(B):
+        # 对每张牌，计算其在不同位置插入的最大评估值
+        remaining_B = [B[j] for j in range(len(B)) if j != i]
+        best_value = -float('inf')
+        best_pos = -1
+        best_score = 0
+        best_new_A = None
 
-        # 保存i和pos的值
+        for pos in range(len(A_copy) + 1):
+            score, removal_length, new_length, match_found, new_A = simulate_insertion(A_copy, card, pos)
+            future_score = calculate_future_score(new_A, remaining_B)
+
+            # 计算特征向量 - 这里充分利用了基因组的权重
+            sum_A = sum(A_copy)
+            intersection_count = len(set([card] + remaining_B) & set(A_copy))
+
+            features = np.array([
+                score,               # 当前得分
+                removal_length,      # 移除长度
+                new_length,          # 新长度
+                future_score,        # 未来得分
+                sum_A,               # A的元素总和
+                intersection_count,  # B与A的交集数量
+            ], dtype=float)
+
+            # 使用基因组权重评估当前插入位置的价值
+            value = np.dot(best_genome, features)
+
+            if value > best_value:
+                best_value = value
+                best_pos = pos
+                best_score = score
+                best_new_A = new_A
+
+        card_values.append((i, best_value, best_pos, best_score, best_new_A))
+
+    # 根据评估值排序B牌 - 这里使用基因组评估的价值来决定处理顺序
+    card_values.sort(key=lambda x: x[1], reverse=True)
+
+    # 按照排序后的顺序处理B牌
+    for i, _, pos, score, new_A in card_values:
         strategy.append((i, pos))
+        current_score += score
+        A_copy = new_A
 
-    # print(f"Turn Score: {round_score}, Total Moves: {num_moves}")
+    print(f"基因组贪心策略: {strategy}, 预估得分: {current_score}")
 
-    return strategy  # 将原始的A，B和最优插牌得分策略返回
+    return strategy  # 返回最佳策略
 
 
 if __name__ == "__main__":
