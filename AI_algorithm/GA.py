@@ -4,7 +4,8 @@ import time
 import pickle
 from multiprocessing import Pool
 import scipy.linalg
-
+import json
+import os
 
 # ---------------------------
 # 游戏规则函数
@@ -16,20 +17,37 @@ def init_deck():
 
 
 
-def deal_cards():
-    deck = init_deck()  # 获取初始化的牌堆
-    random.shuffle(deck)  # 洗牌
-    a_unique = set()
-    # A玩家抽取6张牌，这些牌不能有重复的 否则游戏规则混乱
-    A = []
-    while len(A) < 6:
-        card = deck.pop()
-        if card not in a_unique:
-            a_unique.add(card)
-            A.append(card)
+def deal_cards(json_file="AI_algorithm/json/data_raw.json", seed=None):
+    # 如果提供了随机种子，设置随机数生成器
+    if seed is not None:
+        random.seed(seed)
 
-    B = [deck.pop() for _ in range(3)]  # B玩家抽取3张牌
-    return A, B  # 返回A和B玩家的牌
+    # 检查文件是否存在
+    full_path = os.path.join(os.path.dirname(__file__), "json", os.path.basename(json_file))
+    if not os.path.exists(full_path):
+        raise FileNotFoundError(f"文件未找到: {full_path}")
+
+    try:
+        # 从JSON文件读取数据
+        with open(full_path, 'r') as f:
+            cases = json.load(f)
+
+        # 随机选择一个案例
+        case = random.choice(cases)
+        
+        # 从案例中提取A和B的牌
+        A = case.get('A', [])
+        B = case.get('B', [])
+
+        # 如果JSON中没有提供牌，则使用默认的随机发牌逻辑
+        if not A or not B:
+            raise ValueError("A或B为空")
+
+        return A, B
+
+    except (json.JSONDecodeError, FileNotFoundError) as e:
+        print(f"读取JSON文件时出错: {e}")
+        raise
 
 
 # 洗牌并发牌，从JSON文件中读取A和B
@@ -425,21 +443,16 @@ def GA_Strategy(best_genome=None, A=[], B=[]):
     return strategy  # 返回最佳策略
 
 # 修改后的evaluate_genome函数
-def evaluate_genome(genome, num_rounds=1000):
-    total_scores = []
-    for _ in range(num_rounds):
-        A, B = deal_cards()  # 发牌
-
-        # 使用封装的函数获取最佳策略
-        _, best_strategy, _ = try_all_card_orders(genome, A, B, return_strategy=True)
-
-        # 使用tool.py中的函数计算真实得分
-        from AI_algorithm.tool.tool import calculate_score_by_strategy
-        real_score = calculate_score_by_strategy(A, B, best_strategy)
-        total_scores.append(real_score)
-
-    # 调整权重，增加平均值的比例以提高整体得分
-    return np.median(total_scores) * 0.5 + np.mean(total_scores) * 0.5
+def evaluate_genome(genome, num_rounds=1000, seed_base=42):
+    total_score = 0
+    for round in range(num_rounds):
+        # 使用基于轮数的确定性种子
+        seed = seed_base + round
+        A, B = deal_cards(seed=seed)
+        # GA(genome, A, B)返回分数的准确率极高  属于穷举
+        score = GA(genome, A, B)
+        total_score += score
+    return total_score / num_rounds
 
 
 # 使用多进程评估基因组适应度
@@ -702,9 +715,9 @@ def cmaes_evolve(population, fitnesses, pop_size, num_rounds=1000, num_processes
 
 
 # 遗传算法过程
-def genetic_algorithm(pop_size=600, generations=60, num_rounds=500, elitism_ratio=0.1, tournament_size=3,
+def genetic_algorithm(pop_size=800, generations=60, num_rounds=2000, elitism_ratio=0.15, tournament_size=5,
                       num_processes=8, evolution_methods=['standard', 'island', 'de', 'cmaes'],
-                      method_probs=[0.25, 0.45, 0.10, 0.20] , early_stop_generations=7, early_stop_threshold=0.01):
+                      method_probs=[0.30, 0.40, 0.15, 0.15] , early_stop_generations=7, early_stop_threshold=0.01):
     """
     遗传算法主函数
 
@@ -857,7 +870,6 @@ def analyze_evolution_methods(best_fitness_history, method_history):
         max_fitness = max(fitnesses)
         improve_rate = (fitnesses[-1] - fitnesses[0]) / fitnesses[0] if len(fitnesses) > 1 else 0
         print(f"{method}方法: 平均适应度={avg_fitness:.2f}, 最大适应度={max_fitness:.2f}, 改进率={improve_rate:.2%}")
-
 
 
 
