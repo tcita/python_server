@@ -390,8 +390,12 @@ def DNN(A,B):
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+i = 0
 def Transformer(A, B):
     # 加入专门预测低分的模型
+    global i
+
     num_a_test = 6 # <--- 修改
     num_b_test = 3
     # 确保这些参数与训练时一致
@@ -415,47 +419,27 @@ def Transformer(A, B):
 
     # 专门预测低分的模型
 
-    score1=strategy_TrueScore(A,B,move1)
-    # move2=DNN(A,B)
-    # move2=complete_best_moves(move2)
-    # score2=strategy_TrueScore(A,B,move2)
-
+    # score1=strategy_TrueScore(A,B,move1)
+    # # move2=DNN(A,B)
+    # # move2=complete_best_moves(move2)
+    # # score2=strategy_TrueScore(A,B,move2)
     #
-    # move2=GA_Strategy(A, B)
+    # genome=load_best_genome("../trained/best_genome2.pkl")
+    # move2=GA_Strategy(genome,A, B)
     # move2=complete_best_moves(move2)
     # score2=strategy_TrueScore(A,B,move2)
 
     # if(score1<score2 ):
-    #     print(f"assist win {A},{B}")
+    #     i+=1
+    #     print(f"assist win {A},{B} {i} times")
     #
     #     print(f"Transformer得分：{score1}")
     #     print(f"assist得分：{score2}")
     #     return move2
     # else:
-    #     return move1
-
     return move1
 
-    #
-    # if score2 > score1:
-    #
-    #     move3, _ = Transformer_predict_assist(A, B, model3, num_a=num_a_test, num_b=num_b_test)
-    #
-    #
-    #     score3 = strategy_TrueScore(A, B, move3)
-    #     if score3 > score2:
-    #         print(f"HI move3")
-    #         print(f"普通Transformer得分：{score1}")
-    #         print(f"GA得分：{score2}")
-    #         print(f"辅助Transformer得分：{score3}")
-    #         return move3
-    #     else:
-    #         print(f"HI move2")
-    #         print(f"普通Transformer得分：{score1}")
-    #         print(f"GA得分：{score2}")
-    #         print(f"辅助Transformer得分：{score3}")
-    #         return move2
-    # else:
+    # return move1
 
 
 
@@ -472,7 +456,7 @@ if __name__ == "__main__":
 
 
 
-    Compare_TwoModel(genome,Transformer,rounds=10000,plot=True)
+    Compare_TwoModel(genome,Transformer,rounds=1000,plot=True)
     # A=[7, 9, 5, 13, 3, 10]
     # B=[7, 5, 5]
     # A=[11, 5, 13, 10, 1, 12]

@@ -23,7 +23,7 @@ def init_deck():
 # 在文件顶部添加全局缓存
 _json_cache = {}
 
-def deal_cards(json_file="AI_algorithm/json/data_raw.json", seed=None):
+def deal_cards(json_file="AI_algorithm/json/transformer_error_cases.json", seed=None):
     # 如果提供了随机种子，设置随机数生成器
     if seed is not None:
         random.seed(seed)
@@ -785,7 +785,7 @@ def genetic_algorithm(pop_size=300, generations=60, num_rounds=100, elitism_rati
     return best_genome  # 返回最佳基因组
 
 
-def save_best_genome(genome, filename="trained/best_genome.pkl"):
+def save_best_genome(genome, filename="trained/best_genome2.pkl"):
     with open(filename, 'wb') as file:
         pickle.dump(genome, file)  # 保存最佳基因组到文件
     print(f"Best genome saved to {filename}")  # 打印保存信息
@@ -828,7 +828,7 @@ def analyze_evolution_methods(best_fitness_history, method_history):
         print(f"{method}方法: 平均适应度={avg_fitness:.2f}, 最大适应度={max_fitness:.2f}, 改进率={improve_rate:.2%}")
 
 #
-#
+# #
 # def load_best_genome(filename="../trained/best_genome.pkl"):
 #     try:
 #         # 尝试打开并加载文件

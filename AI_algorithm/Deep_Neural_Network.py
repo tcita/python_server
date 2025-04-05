@@ -6,11 +6,11 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 from torch.optim.lr_scheduler import CosineAnnealingLR
-import math
+
 
 from AI_algorithm.tool.tool import calculate_score_by_strategy
 
-jsonfilename="json/transformer_error_cases.json"
+jsonfilename="json/Low_Score.json"
 GPUDEBUG_MODE = False  # 开启调试模式时设为True，关闭时设为False
 
 def conditional_print(*args, **kwargs):
@@ -288,7 +288,7 @@ def train():
         print("未找到json文件，请确保文件存在")
         exit(1)
 
-    train_model(train_data, epochs=1000, batch_size=1024, model_path="./trained/move_predictor.pth")
+    train_model(train_data, epochs=1000, batch_size=1024, model_path="./trained/Low_Score_DNN.pth")
 
 
 if __name__ == "__main__":
