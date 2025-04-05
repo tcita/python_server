@@ -5,6 +5,9 @@ from AI_algorithm.GA import simulate_insertion
 from collections import defaultdict
 from copy import copy
 # 返回的bestmoves中的位置是基于变化后的A（simulate_insertion处理过）的索引
+# 返回值bestmoves的长度未必都是3  当再出牌也不能得分时  递归不会加入移动
+
+# 比如A=[1,2,3,4,5,6]  B =[1,2,1]
 def recursive_StrategyAndScore(A, B, original_indices=None, move_sequence=None, used_indices=None):
     if move_sequence is None:
         move_sequence = []
