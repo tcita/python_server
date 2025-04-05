@@ -284,10 +284,12 @@ def Compare_TwoModel(model, other_model, rounds=1000, plot=False):
         # 设置全局字体大小
         plt.rcParams.update({'font.size': 12})
         
-        # 1. 箱线图比较
-        axs[0, 0].boxplot([data_true, data_1, data_2], labels=['Ground Truth', 'Algorithm 1', 'Algorithm 2'])
-        axs[0, 0].set_title('Score Distribution Boxplot', fontsize=14)
+        # 1. 小提琴图比较
+        axs[0, 0].violinplot([data_true, data_1, data_2], showmeans=True, showmedians=True)
+        axs[0, 0].set_title('Score Distribution Violin Plot', fontsize=14)
         axs[0, 0].set_ylabel('Score', fontsize=12)
+        axs[0, 0].set_xticks([1, 2, 3])
+        axs[0, 0].set_xticklabels(['Ground Truth', 'Algorithm 1', 'Algorithm 2'])
         axs[0, 0].tick_params(axis='both', labelsize=11)
         axs[0, 0].grid(True, linestyle='--', alpha=0.7)
         
@@ -295,7 +297,8 @@ def Compare_TwoModel(model, other_model, rounds=1000, plot=False):
         axs[0, 1].hist(error_1, bins=30, alpha=0.7, color='blue')
         axs[0, 1].axvline(x=0, color='red', linestyle='--')
         axs[0, 1].set_title('Algorithm 1 Error Distribution', fontsize=14)
-        axs[0, 1].set_xlabel('Error (Ground Truth - Predicted)', fontsize=12)
+        axs[0, 1].set_xlabel('Error (Ground Truth - Predicted)', fontsize=10)
+       
         axs[0, 1].set_ylabel('Frequency', fontsize=12)
         axs[0, 1].tick_params(axis='both', labelsize=11)
         axs[0, 1].grid(True, linestyle='--', alpha=0.7)
@@ -304,7 +307,7 @@ def Compare_TwoModel(model, other_model, rounds=1000, plot=False):
         axs[1, 0].hist(error_2, bins=30, alpha=0.7, color='green')
         axs[1, 0].axvline(x=0, color='red', linestyle='--')
         axs[1, 0].set_title('Algorithm 2 Error Distribution', fontsize=14)
-        axs[1, 0].set_xlabel('Error (Ground Truth - Predicted)', fontsize=12)
+        axs[1, 0].set_xlabel('Error (Ground Truth - Predicted)', fontsize=9)
         axs[1, 0].set_ylabel('Frequency', fontsize=12)
         axs[1, 0].tick_params(axis='both', labelsize=11)
         axs[1, 0].grid(True, linestyle='--', alpha=0.7)
@@ -321,14 +324,15 @@ def Compare_TwoModel(model, other_model, rounds=1000, plot=False):
         
         axs[1, 1].plot(error_ranges, algo1_in_range, 'o-', label='Algorithm 1')
         axs[1, 1].plot(error_ranges, algo2_in_range, 's-', label='Algorithm 2')
-        axs[1, 1].set_title('Cumulative Relative Error Distribution', fontsize=11)
+        axs[1, 1].set_title('Cumulative Relative Error Distribution', fontsize=9)
+      
         axs[1, 1].set_xlabel('Relative Error Range (%)', fontsize=12)
         axs[1, 1].set_ylabel('Sample Percentage (%)', fontsize=12)
         axs[1, 1].tick_params(axis='both', labelsize=11)
         axs[1, 1].legend(fontsize=12)
         axs[1, 1].grid(True, linestyle='--', alpha=0.7)
         
-        plt.tight_layout(pad=3.0)  # 增加边距
+        plt.tight_layout(pad=5.0)  # 增加边距
         plt.savefig('model_comparison_results.png', dpi=300, bbox_inches='tight')
         plt.show()
         
@@ -411,7 +415,7 @@ def Transformer(A, B):
 
     # 专门预测低分的模型
 
-    # score1=strategy_TrueScore(A,B,move1)
+    score1=strategy_TrueScore(A,B,move1)
     # move2=DNN(A,B)
     # move2=complete_best_moves(move2)
     # score2=strategy_TrueScore(A,B,move2)
@@ -429,6 +433,7 @@ def Transformer(A, B):
     #     return move2
     # else:
     #     return move1
+
     return move1
 
     #
@@ -467,7 +472,7 @@ if __name__ == "__main__":
 
 
 
-    Compare_TwoModel(genome,Transformer,rounds=1000,plot=True)
+    Compare_TwoModel(genome,Transformer,rounds=10000,plot=True)
     # A=[7, 9, 5, 13, 3, 10]
     # B=[7, 5, 5]
     # A=[11, 5, 13, 10, 1, 12]

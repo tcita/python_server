@@ -3,7 +3,6 @@ import random
 import numpy as np
 import time
 import pickle
-from multiprocessing import Pool
 import scipy.linalg
 import json
 import os
@@ -21,38 +20,45 @@ def init_deck():
     return [i for i in range(1, 14) for _ in range(4)]  # 创建一个包含四副牌的列表
 
 
+# 在文件顶部添加全局缓存
+_json_cache = {}
 
 def deal_cards(json_file="AI_algorithm/json/data_raw.json", seed=None):
     # 如果提供了随机种子，设置随机数生成器
     if seed is not None:
         random.seed(seed)
 
-    # 检查文件是否存在
-    full_path = os.path.join(os.path.dirname(__file__), "json", os.path.basename(json_file))
-    if not os.path.exists(full_path):
-        raise FileNotFoundError(f"文件未找到: {full_path}")
+    # 检查缓存中是否已有数据
+    if json_file in _json_cache:
+        cases = _json_cache[json_file]
+    else:
+        # 检查文件是否存在
+        full_path = os.path.join(os.path.dirname(__file__), "json", os.path.basename(json_file))
+        if not os.path.exists(full_path):
+            raise FileNotFoundError(f"文件未找到: {full_path}")
 
-    try:
-        # 从JSON文件读取数据
-        with open(full_path, 'r') as f:
-            cases = json.load(f)
+        try:
+            # 从JSON文件读取数据
+            with open(full_path, 'r') as f:
+                cases = json.load(f)
+            # 存入缓存
+            _json_cache[json_file] = cases
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            print(f"读取JSON文件时出错: {e}")
+            raise
 
-        # 随机选择一个案例
-        case = random.choice(cases)
+    # 随机选择一个案例
+    case = random.choice(cases)
 
-        # 从案例中提取A和B的牌
-        A = case.get('A', [])
-        B = case.get('B', [])
+    # 从案例中提取A和B的牌
+    A = case.get('A', [])
+    B = case.get('B', [])
 
-        # 如果JSON中没有提供牌，则使用默认的随机发牌逻辑
-        if not A or not B:
-            raise ValueError("A或B为空")
+    # 如果JSON中没有提供牌，则使用默认的随机发牌逻辑
+    if not A or not B:
+        raise ValueError("A或B为空")
 
-        return A, B
-
-    except (json.JSONDecodeError, FileNotFoundError) as e:
-        print(f"读取JSON文件时出错: {e}")
-        raise
+    return A, B
 
 
 # 洗牌并发牌，从JSON文件中读取A和B
@@ -100,11 +106,6 @@ def get_best_insertion_score(A, card):
 
     return best_pos, max_score
 
-
-
-
-# def choose_insertion(genome, A, B, x, remaining_B):
-# x是不能构成匹配的牌组成的数组
 
 # 像玩家一样做决策
 def calculate_future_score(A, remaining_B):
@@ -240,78 +241,6 @@ def simulate_insertion(A, x, pos):
     return score, len(removal_interval), len(new_A), 1, new_A  # 返回相关信息
 
 
-# 选择最优插入位置的策略
-# 参数解释  x  B中的特定元素  x将使用遍历B来获取  如 foreach(x in B)
-# remaining_B  还未被插入得分的B中的元素
-# def genome_choose_insertion(genome, A, x, remaining_B):
-#     best_value, best_move = -float('inf'), None  # 初始化最佳评估值和最佳移动
-#
-#     # 计算新增特征
-#     sum_A = sum(A)  # A的元素总和
-#
-#     # 计算B的元素总和 (当前x + 剩余的B)
-#     B_elements = [x] + remaining_B
-#
-#     # 计算B与A的交集的数量
-#     intersection_count = len(set(B_elements) & set(A))
-#
-#
-#     possible_moves = []  # 存储所有候选插入位置的得分
-#
-#     # 从位置0开始插入  现在可以从0开始了
-#     for pos in range(0, len(A) + 1):  # 尝试所有可能的插入位置
-#         score, removal_length, new_length, match_found, new_A = simulate_insertion(A, x, pos)  # 模拟插入并获取结果
-#         current_score = score  # 当前得分
-#
-#         future_score = calculate_future_score(new_A, remaining_B)  # 计算未来的得分
-#
-#         # 修改为6个特征向量
-#         features = np.array([
-#             current_score,       # 当前得分 (就是移除的子列表的总分)
-#             removal_length,      # 移除长度
-#             new_length,          # 新长度
-#             future_score,        # 未来得分
-#             sum_A,               # A的元素总和
-#             intersection_count,  # B与A的交集数量
-#         ], dtype=float)  # 特征向量
-#         # 使用CUDA加速计算评估值（如果可用）
-#
-#         value = np.dot(genome, features)  # 基因组的评估值
-#
-#
-#         possible_moves.append((value, pos, current_score, new_A))  # 将当前插入位置及其得分保存到列表中
-#
-#     # 如果对于特定的B元素 有多个可能的插入位置，选择得分最高的那个插入位置
-#     if possible_moves:
-#         best_move = max(possible_moves, key=lambda move: move[0])
-#
-#     #  处理找不到插入位置的情况
-#     if best_move is None:
-#         # possible_moves = []
-#         # for pos in range(1, len(A) + 1):  # 尝试所有可能的插入位置
-#         #     score, removal_length, new_length, match_found, new_A = simulate_insertion(A, x, pos)  # 模拟插入并获取结果
-#         #     possible_moves.append((score, pos, new_A))  # 将当前插入位置及其得分保存到列表中
-#
-#         # 默认插入到末尾，否则没有返回值
-#         print("No suitable insertion position found.")
-#         return len(A), 0, A
-#
-#         # best_move = max(possible_moves, key=lambda move: move[0])
-#
-#     pos, score, new_A = best_move[1], best_move[2], best_move[3]  # 提取最佳插入位置、得分和新牌堆
-#     return pos, score, new_A  # 返回最佳插入位置、得分和新牌堆
-
-
-# # 模拟一轮游戏
-# def simulate_round(genome):
-#     A, B = deal_cards()  # 发牌
-#     round_score = 0  # 初始化本轮得分
-#     for i, x in enumerate(B):  # 遍历B玩家的每一张牌
-#         remaining_B = B[i + 1:]  # 获取后续未处理的B牌
-#         pos, score, A = genome_choose_insertion(genome, A, x, remaining_B)  # 选择最优插入位置并更新牌堆
-#         round_score += score  # 累加得分
-#     return round_score  # 返回本轮总得分
-
 
 # 评估基因组的适应度  还是贪心算法  但是至少不是穷举
 def GA_Strategy(genome, A, B):
@@ -356,8 +285,7 @@ def GA_Strategy(genome, A, B):
             # 为所有可能的插入位置创建特征批次
             all_features = []
             all_positions = []
-            all_scores = []
-            all_new_As = []
+
 
             # 收集所有位置的特征
             for pos in range(len(A_copy) + 1):
@@ -374,9 +302,10 @@ def GA_Strategy(genome, A, B):
                 ]
 
                 all_features.append(features)
+                # 最佳插入位置
                 all_positions.append(pos)
-                all_scores.append(score)
-                all_new_As.append(new_A)
+                # all_scores.append(score)
+                # all_new_As.append(new_A)
 
             # 将所有特征转换为GPU张量并一次性计算
             if all_features:
@@ -388,21 +317,21 @@ def GA_Strategy(genome, A, B):
                 best_idx = torch.argmax(values).item()
                 best_value = values[best_idx].item()
                 best_pos = all_positions[best_idx]
-                best_score = all_scores[best_idx]
-                best_new_A = all_new_As[best_idx]
+                # best_score = all_scores[best_idx]
+                # best_new_A = all_new_As[best_idx]
 
-                card_values.append((i, best_value, best_pos, best_score, best_new_A))
+                card_values.append((i, best_value, best_pos))
 
         return card_values
 
     # 计算卡值
     card_values = compute_card_values_batch(A.copy(), B, genome_tensor)
 
-    # 根据评估值对卡进行排序
+    # 根据评估值对卡进行排序 x[1] 就是 best_value ，即每张牌的最佳评估值
     card_values.sort(key=lambda x: x[1], reverse=True)
 
     # 根据排序后的顺序生成策略
-    strategy = [(card_idx, pos) for card_idx, _, pos, _, _ in card_values]
+    strategy = [(card_idx, pos) for card_idx, _, pos in card_values]
 
     return strategy
 
@@ -742,7 +671,7 @@ def cmaes_evolve(population, fitnesses, pop_size, num_rounds=1000,  generation=0
 
 
 # 遗传算法过程
-def genetic_algorithm(pop_size=40, generations=60, num_rounds=16, elitism_ratio=0.1, tournament_size=3,
+def genetic_algorithm(pop_size=300, generations=60, num_rounds=100, elitism_ratio=0.1, tournament_size=3,
                       evolution_methods=['standard', 'island', 'de', 'cmaes'],
                       method_probs=[0.30, 0.40, 0.15, 0.15] , early_stop_generations=7, early_stop_threshold=0.01):
     """
@@ -898,62 +827,27 @@ def analyze_evolution_methods(best_fitness_history, method_history):
         improve_rate = (fitnesses[-1] - fitnesses[0]) / fitnesses[0] if len(fitnesses) > 1 else 0
         print(f"{method}方法: 平均适应度={avg_fitness:.2f}, 最大适应度={max_fitness:.2f}, 改进率={improve_rate:.2%}")
 
-
-
-# def GA(genome, A, B):
-#     """
-#     尝试所有可能的B牌处理顺序，返回最高得分
-#     """
-#     import itertools
 #
-#     # 获取所有可能的B牌处理顺序
-#     all_orders = list(itertools.permutations(range(len(B))))
 #
-#     best_score = -float('inf')
-#     best_A = None
-#
-#     # 尝试每种可能的顺序
-#     for order in all_orders:
-#         A_copy = A.copy()
-#         current_score = 0
-#
-#         # 按照当前顺序处理B牌
-#         for idx in order:
-#             x = B[idx]
-#             # 计算剩余未处理的B牌
-#             remaining_indices = [i for i in order if i > order.index(idx)]
-#             remaining_B = [B[i] for i in remaining_indices]
-#
-#             # 选择最优插入位置
-#             pos, score, A_copy = genome_choose_insertion(genome, A_copy, x, remaining_B)
-#             current_score += score
-#
-#         # 如果当前顺序得分更高，更新最佳得分
-#         if current_score > best_score:
-#             best_score = current_score
-#             best_A = A_copy
-#
-#     return best_score  # 返回最高得分
-
-def load_best_genome(filename="../trained/best_genome.pkl"):
-    try:
-        # 尝试打开并加载文件
-        with open(filename, 'rb') as file:
-            genome = pickle.load(file)
-        # print(f"genome loaded from {filename}")
-        return genome
-    except FileNotFoundError:
-        # 文件不存在时的处理
-        print(f"Error: The file '{filename}' was not found. Please check the file path.")
-    except PermissionError:
-        # 权限不足时的处理
-        print(f"Error: Permission denied when accessing the file '{filename}'.")
-    except EOFError:
-        # 文件为空或损坏时的处理
-        print(f"Error: The file '{filename}' is empty or corrupted.")
-    except Exception as e:
-        # 捕获其他未知异常
-        print(f"An unexpected error occurred while loading the file '{filename}': {e}")
+# def load_best_genome(filename="../trained/best_genome.pkl"):
+#     try:
+#         # 尝试打开并加载文件
+#         with open(filename, 'rb') as file:
+#             genome = pickle.load(file)
+#         # print(f"genome loaded from {filename}")
+#         return genome
+#     except FileNotFoundError:
+#         # 文件不存在时的处理
+#         print(f"Error: The file '{filename}' was not found. Please check the file path.")
+#     except PermissionError:
+#         # 权限不足时的处理
+#         print(f"Error: Permission denied when accessing the file '{filename}'.")
+#     except EOFError:
+#         # 文件为空或损坏时的处理
+#         print(f"Error: The file '{filename}' is empty or corrupted.")
+#     except Exception as e:
+#         # 捕获其他未知异常
+#         print(f"An unexpected error occurred while loading the file '{filename}': {e}")
 
 
 
@@ -962,7 +856,3 @@ if __name__ == "__main__":
     print("\nGenome model : ", genome)  # 打印最佳基因组
     # evaluate_final_model(genome)  # 评估最终模型性能
     save_best_genome(genome)  # 保存最佳基因组
-    #
-    # genome=load_best_genome()
-    # GA_partial = partial(GA, genome)
-    # modsummery(GA_partial,2000)

@@ -8,6 +8,7 @@ import numpy as np
 import torch.nn.functional as F
 
 from AI_algorithm.tool.tool import calculate_score_by_strategy
+# 添加全局缓存
 
 
 # from AI_algorithm.tool.tool import calculate_score_by_strategy
@@ -568,23 +569,40 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
         default_score = calculate_score_by_strategy(A, B, default_strategy)
         return default_strategy, default_score
 
-
+_json_cache = {}
 def train():
     """
     加载训练数据并启动 Transformer(6x3) 训练过程
     """
+
+    def load_json_data(json_file_path):
+        """
+        加载JSON数据并缓存
+        """
+        if json_file_path in _json_cache:
+            return _json_cache[json_file_path]
+
+        try:
+            with open(json_file_path, "r") as f:
+                data = json.load(f)
+            _json_cache[json_file_path] = data
+            print(f"成功加载训练数据，样本数: {len(data)}")
+            return data
+        except FileNotFoundError:
+            print(f"错误: 未找到 JSON 文件 '{json_file_path}'")
+            raise
+        except json.JSONDecodeError:
+            print(f"错误: JSON 文件 '{json_file_path}' 格式无效")
+            raise
+        except Exception as e:
+            print(f"加载数据时发生未知错误: {e}")
+            raise
+
     try:
-        with open(jsonfilename, "r") as f:
-            train_data = json.load(f)
-        print(f"成功加载训练数据，样本数: {len(train_data)}")
-    except FileNotFoundError:
-        print(f"错误: 未找到 JSON 文件 '{jsonfilename}'")
-        exit(1)
-    except json.JSONDecodeError:
-        print(f"错误: JSON 文件 '{jsonfilename}' 格式无效")
-        exit(1)
+        # 使用缓存加载数据
+        train_data = load_json_data(jsonfilename)
     except Exception as e:
-        print(f"加载数据时发生未知错误: {e}")
+        print(f"加载数据失败: {e}")
         exit(1)
 
     if not train_data:
