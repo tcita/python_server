@@ -1,6 +1,6 @@
 import unittest
 
-from AI_algorithm.GA import genome_choose_insertion
+
 from AI_algorithm.tool.tool import simulate_insertion_tool, load_best_genome
 
 
@@ -48,25 +48,7 @@ class TestSimulateInsertion(unittest.TestCase):
                 print(f"更新后的数组: {updated_A}")
                 print("-" * 30)
 
-    def test_simulate_insertion_last(self):
-        """
-        模拟插入，输出插入过程中的每一步
-        """
-        best_genome = load_best_genome()
-        A = [2, 8, 1]
-        B = [8, 12]
-        round_score = 0
-        num_moves = 0
 
-        for i, x in enumerate(B):
-            remaining_B = B[i + 1:]
-            pos, score, A_new = genome_choose_insertion(best_genome, A,  x, remaining_B)
-            print(f"Move {num_moves + 1}: Insert card {x} at position {pos}")
-            print(f"Score: {score}, New A: {A_new}\n")
-            round_score += score
-            num_moves += 1
-
-        print(f"Final Score: {round_score}, Total Moves: {num_moves}")
 
 
 if __name__ == '__main__':

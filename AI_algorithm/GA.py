@@ -313,19 +313,18 @@ def simulate_insertion(A, x, pos):
 #     return round_score  # 返回本轮总得分
 
 
-# 评估基因组的适应度
-def evaluate_all_insertion_by_genome(genome, A, B):
+# 评估基因组的适应度  还是贪心算法  但是至少不是穷举
+def GA_Strategy(genome, A, B):
     """
     使用基因组评估所有可能的B牌处理顺序，返回最高得分和相应策略
 
     参数：
-    - genome: 基因组权重
+    - genome: 基因组权重 (NumPy数组或PyTorch张量)
     - A: A玩家的牌
     - B: B玩家的牌
 
     返回：
-    - best_score: 最高得分
-    - best_strategy: 最佳策略
+    - strategy: 最佳策略
     """
     import torch
     import numpy as np
@@ -333,69 +332,77 @@ def evaluate_all_insertion_by_genome(genome, A, B):
     # 检查CUDA可用性并设置设备
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    # 检查genome类型并转换为torch张量
+    if isinstance(genome, torch.Tensor):
+        genome_tensor = genome.to(device)
+    else:
+        genome_tensor = torch.tensor(genome, dtype=torch.float32, device=device)
 
 
-    # 将基因组转换为torch张量以便GPU加速
-    genome_tensor = torch.tensor(genome, dtype=torch.float32, device=device)
 
-    # 使用PyTorch进行特征计算以实现GPU加速
-    def compute_card_values(A_copy, B, genome_tensor):
-        # 存储每张牌的评估值
+    # 批量计算所有B牌的所有可能插入位置的特征
+    def compute_card_values_batch(A_copy, B, genome_tensor):
         card_values = []
-        for i, card in enumerate(B):
-            # 对每张牌，计算其在不同位置插入的最大评估值
-            remaining_B = [B[j] for j in range(len(B)) if j != i]
-            best_value = -float('inf')
-            best_pos = -1
-            best_score = 0
-            best_new_A = None
 
-            # 并行计算所有可能的插入位置的特征
+        # 预先计算一些共用特征
+        sum_A = sum(A_copy)
+        A_set = set(A_copy)
+
+        for i, card in enumerate(B):
+            remaining_B = [B[j] for j in range(len(B)) if j != i]
+            remaining_B_set = set([card] + remaining_B)
+            intersection_count = len(remaining_B_set & A_set)
+
+            # 为所有可能的插入位置创建特征批次
+            all_features = []
+            all_positions = []
+            all_scores = []
+            all_new_As = []
+
+            # 收集所有位置的特征
             for pos in range(len(A_copy) + 1):
-                # 模拟插入并计算得分
                 score, removal_length, new_length, match_found, new_A = simulate_insertion(A_copy, card, pos)
                 future_score = calculate_future_score(new_A, remaining_B)
 
-                # 使用PyTorch计算特征（适用于GPU加速）
-                sum_A = sum(A_copy)
-                intersection_count = len(set([card] + remaining_B) & set(A_copy))
-
-                # 构建特征向量
-                features = torch.tensor([
+                features = [
                     score,  # 当前得分
                     removal_length,  # 移除长度
                     new_length,  # 新长度
                     future_score,  # 未来得分
                     sum_A,  # A的元素总和
                     intersection_count,  # B与A的交集数量
-                ], dtype=torch.float32, device=device)
+                ]
 
-                # 在GPU上计算点积
-                value = torch.dot(genome_tensor, features).item()
+                all_features.append(features)
+                all_positions.append(pos)
+                all_scores.append(score)
+                all_new_As.append(new_A)
 
-                # 更新最佳值
-                if value > best_value:
-                    best_value = value
-                    best_pos = pos
-                    best_score = score
-                    best_new_A = new_A
+            # 将所有特征转换为GPU张量并一次性计算
+            if all_features:
+                features_tensor = torch.tensor(all_features, dtype=torch.float32, device=device)
+                # 批量计算点积 (每个位置的评估值)
+                values = torch.matmul(features_tensor, genome_tensor)
 
-            # 记录每张牌的最佳插入信息
-            card_values.append((i, best_value, best_pos, best_score, best_new_A))
+                # 找到最佳位置
+                best_idx = torch.argmax(values).item()
+                best_value = values[best_idx].item()
+                best_pos = all_positions[best_idx]
+                best_score = all_scores[best_idx]
+                best_new_A = all_new_As[best_idx]
+
+                card_values.append((i, best_value, best_pos, best_score, best_new_A))
 
         return card_values
 
     # 计算卡值
-    card_values = compute_card_values(A.copy(), B, genome_tensor)
+    card_values = compute_card_values_batch(A.copy(), B, genome_tensor)
 
     # 根据评估值对卡进行排序
     card_values.sort(key=lambda x: x[1], reverse=True)
 
     # 根据排序后的顺序生成策略
     strategy = [(card_idx, pos) for card_idx, _, pos, _, _ in card_values]
-
-
-
 
     return strategy
 
@@ -411,16 +418,13 @@ def evaluate_genome(genome, num_rounds=1000, seed_base=42):
     print(f"开始评估基因组，总共 {num_rounds} 轮...")
 
     # 将基因组转换为 GPU 张量
-    genome_tensor = torch.tensor(genome, dtype=torch.float32, device=device)
+    # genome_tensor = torch.tensor(genome, dtype=torch.float32, device=device)
 
     # 批处理大小，根据GPU内存调整
     batch_size = 64 if device.type == 'cuda' else 32
 
     # 预分配结果数组
     total_scores = torch.zeros(num_rounds, dtype=torch.float32, device=device)
-
-    # 添加进度输出
-    progress_interval = max(1, num_rounds // 10)  # 每10%输出一次
 
     # 批量处理评估任务
     for batch_start in range(0, num_rounds, batch_size):
@@ -439,12 +443,13 @@ def evaluate_genome(genome, num_rounds=1000, seed_base=42):
         batch_scores = torch.zeros(batch_size_actual, dtype=torch.float32, device=device)
 
         for j in range(batch_size_actual):
-            strategy = evaluate_all_insertion_by_genome(genome, batch_A[j], batch_B[j])
+            # 修改：直接传递 genome 而不是 genome_tensor.cpu().numpy()
+            # 这样 evaluate_all_insertion_by_genome 可以自己决定是否使用 GPU
+            strategy = GA_Strategy(genome, batch_A[j], batch_B[j])
             batch_scores[j] = calculate_score_by_strategy(batch_A[j], batch_B[j], strategy)
 
         # 复制批次得分到总得分
         total_scores[batch_start:batch_end] = batch_scores
-
 
     # 计算最终平均分
     mean_score = torch.mean(total_scores).item()
@@ -475,7 +480,7 @@ def evaluate_genomes_return_fitness(population, num_rounds=1000):
         try:
             print(f"正在评估第 {population.index(genome) + 1} /{len(population)}个基因组")
             fitness = evaluate_genome(genome, num_rounds)
-            print(f"基因组 {genome} 评估完成，适应度: {fitness}")
+            print(f" 评估完成，适应度: {fitness}")
             fitnesses.append(fitness)
         except Exception as e:
             print(f"基因组 {genome} 评估发生异常: {e}")
