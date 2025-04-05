@@ -9,7 +9,7 @@ import json
 import os
 import torch
 
-from AI_algorithm.tool.tool import complete_best_moves
+from AI_algorithm.tool.tool import complete_best_moves, calculate_score_by_strategy
 
 
 # ---------------------------
@@ -39,7 +39,7 @@ def deal_cards(json_file="AI_algorithm/json/data_raw.json", seed=None):
 
         # 随机选择一个案例
         case = random.choice(cases)
-        
+
         # 从案例中提取A和B的牌
         A = case.get('A', [])
         B = case.get('B', [])
@@ -243,73 +243,63 @@ def simulate_insertion(A, x, pos):
 # 选择最优插入位置的策略
 # 参数解释  x  B中的特定元素  x将使用遍历B来获取  如 foreach(x in B)
 # remaining_B  还未被插入得分的B中的元素
-def genome_choose_insertion(genome, A, x, remaining_B):
-    best_value, best_move = -float('inf'), None  # 初始化最佳评估值和最佳移动
-    
-    # 计算新增特征
-    sum_A = sum(A)  # A的元素总和
-
-    # 计算B的元素总和 (当前x + 剩余的B)
-    B_elements = [x] + remaining_B
-    # sum_B = sum(B_elements)  # B的元素总和 - 已移除
-
-    # 计算B与A的交集的数量
-    intersection_count = len(set(B_elements) & set(A))
-
-    # 获取B的每个元素在A中的位置 - 已移除
-    # B_positions_in_A = []
-    # for b_card in B_elements:
-    #     positions = [i for i, a_card in enumerate(A) if a_card == b_card]
-    #     if positions:
-    #         B_positions_in_A.extend(positions)
-
-    # 如果没有B元素在A中，使用-1作为默认值 - 已移除
-    # avg_position = sum(B_positions_in_A) / len(B_positions_in_A) if B_positions_in_A else -1
-
-    possible_moves = []  # 存储所有候选插入位置的得分
-
-    # 从位置0开始插入  现在可以从0开始了
-    for pos in range(0, len(A) + 1):  # 尝试所有可能的插入位置
-        score, removal_length, new_length, match_found, new_A = simulate_insertion(A, x, pos)  # 模拟插入并获取结果
-        current_score = score  # 当前得分
-
-        future_score = calculate_future_score(new_A, remaining_B)  # 计算未来的得分
-
-        # 修改为6个特征向量
-        features = np.array([
-            current_score,       # 当前得分 (就是移除的子列表的总分)
-            removal_length,      # 移除长度
-            new_length,          # 新长度
-            future_score,        # 未来得分
-            sum_A,               # A的元素总和
-            intersection_count,  # B与A的交集数量
-        ], dtype=float)  # 特征向量
-        # 使用CUDA加速计算评估值（如果可用）
-
-        value = np.dot(genome, features)  # 基因组的评估值
-
-
-        possible_moves.append((value, pos, current_score, new_A))  # 将当前插入位置及其得分保存到列表中
-
-    # 如果对于特定的B元素 有多个可能的插入位置，选择得分最高的那个插入位置
-    if possible_moves:
-        best_move = max(possible_moves, key=lambda move: move[0])
-
-    #  处理找不到插入位置的情况
-    if best_move is None:
-        # possible_moves = []
-        # for pos in range(1, len(A) + 1):  # 尝试所有可能的插入位置
-        #     score, removal_length, new_length, match_found, new_A = simulate_insertion(A, x, pos)  # 模拟插入并获取结果
-        #     possible_moves.append((score, pos, new_A))  # 将当前插入位置及其得分保存到列表中
-
-        # 默认插入到末尾，否则没有返回值
-        print("No suitable insertion position found.")
-        return len(A), 0, A
-
-        # best_move = max(possible_moves, key=lambda move: move[0])
-
-    pos, score, new_A = best_move[1], best_move[2], best_move[3]  # 提取最佳插入位置、得分和新牌堆
-    return pos, score, new_A  # 返回最佳插入位置、得分和新牌堆
+# def genome_choose_insertion(genome, A, x, remaining_B):
+#     best_value, best_move = -float('inf'), None  # 初始化最佳评估值和最佳移动
+#
+#     # 计算新增特征
+#     sum_A = sum(A)  # A的元素总和
+#
+#     # 计算B的元素总和 (当前x + 剩余的B)
+#     B_elements = [x] + remaining_B
+#
+#     # 计算B与A的交集的数量
+#     intersection_count = len(set(B_elements) & set(A))
+#
+#
+#     possible_moves = []  # 存储所有候选插入位置的得分
+#
+#     # 从位置0开始插入  现在可以从0开始了
+#     for pos in range(0, len(A) + 1):  # 尝试所有可能的插入位置
+#         score, removal_length, new_length, match_found, new_A = simulate_insertion(A, x, pos)  # 模拟插入并获取结果
+#         current_score = score  # 当前得分
+#
+#         future_score = calculate_future_score(new_A, remaining_B)  # 计算未来的得分
+#
+#         # 修改为6个特征向量
+#         features = np.array([
+#             current_score,       # 当前得分 (就是移除的子列表的总分)
+#             removal_length,      # 移除长度
+#             new_length,          # 新长度
+#             future_score,        # 未来得分
+#             sum_A,               # A的元素总和
+#             intersection_count,  # B与A的交集数量
+#         ], dtype=float)  # 特征向量
+#         # 使用CUDA加速计算评估值（如果可用）
+#
+#         value = np.dot(genome, features)  # 基因组的评估值
+#
+#
+#         possible_moves.append((value, pos, current_score, new_A))  # 将当前插入位置及其得分保存到列表中
+#
+#     # 如果对于特定的B元素 有多个可能的插入位置，选择得分最高的那个插入位置
+#     if possible_moves:
+#         best_move = max(possible_moves, key=lambda move: move[0])
+#
+#     #  处理找不到插入位置的情况
+#     if best_move is None:
+#         # possible_moves = []
+#         # for pos in range(1, len(A) + 1):  # 尝试所有可能的插入位置
+#         #     score, removal_length, new_length, match_found, new_A = simulate_insertion(A, x, pos)  # 模拟插入并获取结果
+#         #     possible_moves.append((score, pos, new_A))  # 将当前插入位置及其得分保存到列表中
+#
+#         # 默认插入到末尾，否则没有返回值
+#         print("No suitable insertion position found.")
+#         return len(A), 0, A
+#
+#         # best_move = max(possible_moves, key=lambda move: move[0])
+#
+#     pos, score, new_A = best_move[1], best_move[2], best_move[3]  # 提取最佳插入位置、得分和新牌堆
+#     return pos, score, new_A  # 返回最佳插入位置、得分和新牌堆
 
 
 # # 模拟一轮游戏
@@ -324,227 +314,148 @@ def genome_choose_insertion(genome, A, x, remaining_B):
 
 
 # 评估基因组的适应度
-def try_all_card_orders(genome, A, B, return_strategy=False):
+def evaluate_all_insertion_by_genome(genome, A, B):
     """
-    尝试所有可能的B牌处理顺序，返回最高得分和相应策略
-    
+    使用基因组评估所有可能的B牌处理顺序，返回最高得分和相应策略
+
     参数：
-    - genome: 基因组
+    - genome: 基因组权重
     - A: A玩家的牌
     - B: B玩家的牌
-    - return_strategy: 是否返回策略
-    
+
     返回：
     - best_score: 最高得分
-    - best_strategy: 最佳策略（如果return_strategy=True）
-    - best_final_A: 最终A牌状态（如果return_strategy=True）
+    - best_strategy: 最佳策略
     """
-    import itertools
-    
-    # 获取所有可能的B牌处理顺序
-    all_orders = list(itertools.permutations(range(len(B))))
-    
-    best_score = -float('inf')
-    best_strategy = None
-    best_final_A = None
-    
-    # 尝试每种可能的顺序
-    for order in all_orders:
-        A_copy = A.copy()
-        current_score = 0
-        current_strategy = []
-        
-        # 按照当前顺序处理B牌
-        for idx in order:
-            x = B[idx]
-            # 计算剩余未处理的B牌
-            remaining_indices = [i for i in order if order.index(i) > order.index(idx)]
-            remaining_B = [B[i] for i in remaining_indices]
-            
-            # 对B中的特定元素x选择最优插入位置
-            pos, score, A_copy = genome_choose_insertion(genome, A_copy, x, remaining_B)
-            current_score += score
-            current_strategy.append((idx, pos))
-        
-        # 如果当前顺序得分更高，更新最佳策略
-        if current_score > best_score:
-            best_score = current_score
-            best_strategy = current_strategy
-            best_final_A = A_copy
-    
+    import torch
+    import numpy as np
 
-    if return_strategy:
-        return best_score, best_strategy, best_final_A
-    else:
-        return best_score
+    # 检查CUDA可用性并设置设备
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"使用设备: {device}")
 
 
-# 修改后的GA函数
-def GA(genome, A, B):
-    """
-    尝试所有可能的B牌处理顺序，返回最高得分
-    """
-    return try_all_card_orders(genome, A, B, return_strategy=False)
+    # 将基因组转换为torch张量以便GPU加速
+    genome_tensor = torch.tensor(genome, dtype=torch.float32, device=device)
 
-# 修改后的GA_Strategy函数
-def GA_Strategy(genome=None, A=[], B=[]):
-    if genome is None:
-        raise ValueError("Genome没有初始化!")
+    # 使用PyTorch进行特征计算以实现GPU加速
+    def compute_card_values(A_copy, B, genome_tensor):
+        # 存储每张牌的评估值
+        card_values = []
+        for i, card in enumerate(B):
+            # 对每张牌，计算其在不同位置插入的最大评估值
+            remaining_B = [B[j] for j in range(len(B)) if j != i]
+            best_value = -float('inf')
+            best_pos = -1
+            best_score = 0
+            best_new_A = None
 
-    print("-" * 20)
+            # 并行计算所有可能的插入位置的特征
+            for pos in range(len(A_copy) + 1):
+                # 模拟插入并计算得分
+                score, removal_length, new_length, match_found, new_A = simulate_insertion(A_copy, card, pos)
+                future_score = calculate_future_score(new_A, remaining_B)
 
-    # 使用贪心策略直接决定处理顺序，而不是穷举所有可能性
-    A_copy = A.copy()
-    current_score = 0
-    strategy = []
+                # 使用PyTorch计算特征（适用于GPU加速）
+                sum_A = sum(A_copy)
+                intersection_count = len(set([card] + remaining_B) & set(A_copy))
 
-    # 计算每张B牌的评估值
-    card_values = []
-    for i, card in enumerate(B):
-        # 对每张牌，计算其在不同位置插入的最大评估值
-        remaining_B = [B[j] for j in range(len(B)) if j != i]
-        best_value = -float('inf')
-        best_pos = -1
-        best_score = 0
-        best_new_A = None
+                # 构建特征向量
+                features = torch.tensor([
+                    score,  # 当前得分
+                    removal_length,  # 移除长度
+                    new_length,  # 新长度
+                    future_score,  # 未来得分
+                    sum_A,  # A的元素总和
+                    intersection_count,  # B与A的交集数量
+                ], dtype=torch.float32, device=device)
 
-        for pos in range(len(A_copy) + 1):
-            score, removal_length, new_length, match_found, new_A = simulate_insertion(A_copy, card, pos)
-            future_score = calculate_future_score(new_A, remaining_B)
+                # 在GPU上计算点积
+                value = torch.dot(genome_tensor, features).item()
 
-            # 计算特征向量 - 这里充分利用了基因组的权重
-            sum_A = sum(A_copy)
-            intersection_count = len(set([card] + remaining_B) & set(A_copy))
+                # 更新最佳值
+                if value > best_value:
+                    best_value = value
+                    best_pos = pos
+                    best_score = score
+                    best_new_A = new_A
 
-            features = np.array([
-                score,               # 当前得分
-                removal_length,      # 移除长度
-                new_length,          # 新长度
-                future_score,        # 未来得分
-                sum_A,               # A的元素总和
-                intersection_count,  # B与A的交集数量
-            ], dtype=float)  # 特征向量
-            # 使用CUDA加速计算评估值（如果可用）
+            # 记录每张牌的最佳插入信息
+            card_values.append((i, best_value, best_pos, best_score, best_new_A))
 
-            value = np.dot(genome, features)
+        return card_values
 
-            if value > best_value:
-                best_value = value
-                best_pos = pos
-                best_score = score
-                best_new_A = new_A
+    # 计算卡值
+    card_values = compute_card_values(A.copy(), B, genome_tensor)
 
-        card_values.append((i, best_value, best_pos, best_score, best_new_A))
-
-    # 根据评估值排序B牌 - 这里使用基因组评估的价值来决定处理顺序
+    # 根据评估值对卡进行排序
     card_values.sort(key=lambda x: x[1], reverse=True)
 
-    # 按照排序后的顺序处理B牌
-    for i, _, pos, score, new_A in card_values:
-        strategy.append((i, pos))
-        current_score += score
-        A_copy = new_A
+    # 根据排序后的顺序生成策略
+    strategy = [(card_idx, pos) for card_idx, _, pos, _, _ in card_values]
 
-    print(f"基因组贪心策略: {strategy}, 预估得分: {current_score}")
 
-    return strategy  # 返回最佳策略
 
-# 修改后的evaluate_genome函数
+
+    return strategy
+
+
 def evaluate_genome(genome, num_rounds=1000, seed_base=42):
     import torch
-    from AI_algorithm.tool.tool import calculate_score_by_strategy, simulate_insertion_tool
+    import numpy as np
+    from AI_algorithm.tool.tool import calculate_score_by_strategy
 
     # 检查并设置 GPU 可用性
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"使用设备: {device}")
+
     print(f"开始评估基因组，总共 {num_rounds} 轮...")
+
     # 将基因组转换为 GPU 张量
     genome_tensor = torch.tensor(genome, dtype=torch.float32, device=device)
 
+    # 批处理大小，根据GPU内存调整
+    batch_size = 64 if device.type == 'cuda' else 32
+
     # 预分配结果数组
-    total_score = torch.zeros(num_rounds, device=device)
+    total_scores = torch.zeros(num_rounds, dtype=torch.float32, device=device)
+
     # 添加进度输出
     progress_interval = max(1, num_rounds // 10)  # 每10%输出一次
-    start_time = time.time()
-    # 使用 CUDA 并行计算
-    for round in range(num_rounds):
-        if round % progress_interval == 0 or round == num_rounds - 1:
-            elapsed = time.time() - start_time
-            progress = (round + 1) / num_rounds * 100
-            print(f"评估进度: {round + 1}/{num_rounds} ({progress:.1f}%), 已用时间: {elapsed:.2f}秒")
-        # 使用基于轮数的确定性种子
-        seed = seed_base + round
 
-        try:
-            # 使用 deal_cards 获取 A 和 B
-            A, B = deal_cards(seed=seed)
+    # 批量处理评估任务
+    for batch_start in range(0, num_rounds, batch_size):
+        batch_end = min(batch_start + batch_size, num_rounds)
+        batch_size_actual = batch_end - batch_start
 
-            # 使用贪心策略生成处理顺序
-            strategy = []
-            A_copy = A.copy()
+        # 为当前批次生成所有A和B
+        batch_A = []
+        batch_B = []
+        for _ in range(batch_size_actual):
+            A, B = deal_cards(seed=seed_base + batch_start + _)
+            batch_A.append(A)
+            batch_B.append(B)
 
-            # 计算每张 B 牌的评估值
-            card_values = []
-            for i, card in enumerate(B):
-                # 对每张牌，计算其在不同位置插入的最大评估值
-                remaining_B = [B[j] for j in range(len(B)) if j != i]
-                best_value = float('-inf')
-                best_pos = -1
+        # 并行评估批次使用GPU
+        batch_scores = torch.zeros(batch_size_actual, dtype=torch.float32, device=device)
 
-                for pos in range(len(A_copy) + 1):
-                    score, removal_length, new_length, match_found, new_A = simulate_insertion(A_copy, card, pos)
-                    future_score = calculate_future_score(new_A, remaining_B)
+        for j in range(batch_size_actual):
+            strategy = evaluate_all_insertion_by_genome(genome, batch_A[j], batch_B[j])
+            batch_scores[j] = calculate_score_by_strategy(batch_A[j], batch_B[j], strategy)
 
-                    # 计算特征向量
-                    sum_A = sum(A_copy)
-                    intersection_count = len(set([card] + remaining_B) & set(A_copy))
+        # 复制批次得分到总得分
+        total_scores[batch_start:batch_end] = batch_scores
 
-                    # 使用 PyTorch 张量计算
-                    features = torch.tensor([
-                        score,  # 当前得分
-                        removal_length,  # 移除长度
-                        new_length,  # 新长度
-                        future_score,  # 未来得分
-                        sum_A,  # A的元素总和
-                        intersection_count,  # B与A的交集数量
-                    ], dtype=torch.float32, device=device)
+        # 进度跟踪
+        if (batch_start + batch_size) % progress_interval == 0:
+            print(f"进度: {(batch_start + batch_size) / num_rounds * 100:.2f}%")
 
-                    # 使用基因组权重评估当前插入位置的价值
-                    value = torch.dot(genome_tensor, features)
+    # 计算最终平均分
+    mean_score = torch.mean(total_scores).item()
 
-                    if value > best_value:
-                        best_value = value.item()
-                        best_pos = pos
+    print(f"基因组评估完成:")
+    print(f"平均得分: {mean_score}")
 
-                card_values.append((i, best_value, best_pos))
-
-            # 根据评估值排序 B 牌
-            card_values.sort(key=lambda x: x[1], reverse=True)
-
-            # 生成策略
-            strategy = [(i, pos) for i, _, pos in card_values]
-
-            # 确保策略长度为3
-            complete_best_moves(strategy)
-
-            # 使用 calculate_score_by_strategy 计算分数
-            score = calculate_score_by_strategy(A.copy(), B, strategy)
-            total_score[round] = score
-
-        except Exception as e:
-            print(f"第 {round+1}/{num_rounds} 轮发生异常: {e}")
-            import traceback
-            traceback.print_exc()
-            # 出现异常时给一个较低的分数
-            total_score[round] = float('-inf')
-
-    # 计算平均分数
-    avg_score = total_score.mean().item()
-    print(f"基因组评估完成，平均得分: {avg_score}")
-
-    return avg_score
-
-
+    return mean_score  # 返回平均得分
 def evaluate_genomes_return_fitness(population, num_rounds=1000):
     """
     使用多进程评估基因组适应度，添加超时和异常处理
@@ -559,9 +470,9 @@ def evaluate_genomes_return_fitness(population, num_rounds=1000):
     - fitnesses: 适应度列表
     """
     # print(f"使用 {num_processes} 个进程评估 {len(population)} 个基因组")
-    
+
     fitnesses = []
-    
+
     # 调试模式：同步调用
     for genome in population:
         try:
@@ -572,7 +483,7 @@ def evaluate_genomes_return_fitness(population, num_rounds=1000):
         except Exception as e:
             print(f"基因组 {genome} 评估发生异常: {e}")
             fitnesses.append(-float('inf'))
-    
+
     return fitnesses
 
 
@@ -829,7 +740,7 @@ def cmaes_evolve(population, fitnesses, pop_size, num_rounds=1000,  generation=0
 
 
 # 遗传算法过程
-def genetic_algorithm(pop_size=300, generations=60, num_rounds=10, elitism_ratio=0.1, tournament_size=3,
+def genetic_algorithm(pop_size=40, generations=60, num_rounds=16, elitism_ratio=0.1, tournament_size=3,
                       evolution_methods=['standard', 'island', 'de', 'cmaes'],
                       method_probs=[0.30, 0.40, 0.15, 0.15] , early_stop_generations=7, early_stop_threshold=0.01):
     """
@@ -987,40 +898,40 @@ def analyze_evolution_methods(best_fitness_history, method_history):
 
 
 
-def GA(genome, A, B):
-    """
-    尝试所有可能的B牌处理顺序，返回最高得分
-    """
-    import itertools
-
-    # 获取所有可能的B牌处理顺序
-    all_orders = list(itertools.permutations(range(len(B))))
-
-    best_score = -float('inf')
-    best_A = None
-
-    # 尝试每种可能的顺序
-    for order in all_orders:
-        A_copy = A.copy()
-        current_score = 0
-
-        # 按照当前顺序处理B牌
-        for idx in order:
-            x = B[idx]
-            # 计算剩余未处理的B牌
-            remaining_indices = [i for i in order if i > order.index(idx)]
-            remaining_B = [B[i] for i in remaining_indices]
-
-            # 选择最优插入位置
-            pos, score, A_copy = genome_choose_insertion(genome, A_copy, x, remaining_B)
-            current_score += score
-
-        # 如果当前顺序得分更高，更新最佳得分
-        if current_score > best_score:
-            best_score = current_score
-            best_A = A_copy
-
-    return best_score  # 返回最高得分
+# def GA(genome, A, B):
+#     """
+#     尝试所有可能的B牌处理顺序，返回最高得分
+#     """
+#     import itertools
+#
+#     # 获取所有可能的B牌处理顺序
+#     all_orders = list(itertools.permutations(range(len(B))))
+#
+#     best_score = -float('inf')
+#     best_A = None
+#
+#     # 尝试每种可能的顺序
+#     for order in all_orders:
+#         A_copy = A.copy()
+#         current_score = 0
+#
+#         # 按照当前顺序处理B牌
+#         for idx in order:
+#             x = B[idx]
+#             # 计算剩余未处理的B牌
+#             remaining_indices = [i for i in order if i > order.index(idx)]
+#             remaining_B = [B[i] for i in remaining_indices]
+#
+#             # 选择最优插入位置
+#             pos, score, A_copy = genome_choose_insertion(genome, A_copy, x, remaining_B)
+#             current_score += score
+#
+#         # 如果当前顺序得分更高，更新最佳得分
+#         if current_score > best_score:
+#             best_score = current_score
+#             best_A = A_copy
+#
+#     return best_score  # 返回最高得分
 
 def load_best_genome(filename="../trained/best_genome.pkl"):
     try:
@@ -1042,68 +953,6 @@ def load_best_genome(filename="../trained/best_genome.pkl"):
         # 捕获其他未知异常
         print(f"An unexpected error occurred while loading the file '{filename}': {e}")
 
-
-def GA_Strategy(genome=None, A=[], B=[]):
-    if genome is None:
-        raise ValueError("Genome没有初始化!")
-
-    print("-" * 20)
-
-    # 使用贪心策略直接决定处理顺序，而不是穷举所有可能性
-    A_copy = A.copy()
-    current_score = 0
-    strategy = []
-
-    # 计算每张B牌的评估值
-    card_values = []
-    for i, card in enumerate(B):
-        # 对每张牌，计算其在不同位置插入的最大评估值
-        remaining_B = [B[j] for j in range(len(B)) if j != i]
-        best_value = -float('inf')
-        best_pos = -1
-        best_score = 0
-        best_new_A = None
-
-        for pos in range(len(A_copy) + 1):
-            score, removal_length, new_length, match_found, new_A = simulate_insertion(A_copy, card, pos)
-            future_score = calculate_future_score(new_A, remaining_B)
-
-            # 计算特征向量 - 这里充分利用了基因组的权重
-            sum_A = sum(A_copy)
-            intersection_count = len(set([card] + remaining_B) & set(A_copy))
-
-            features = np.array([
-                score,               # 当前得分
-                removal_length,      # 移除长度
-                new_length,          # 新长度
-                future_score,        # 未来得分
-                sum_A,               # A的元素总和
-                intersection_count,  # B与A的交集数量
-            ], dtype=float)
-
-            # 使用基因组权重评估当前插入位置的价值
-            value = np.dot(genome, features)
-
-            if value > best_value:
-                best_value = value
-                best_pos = pos
-                best_score = score
-                best_new_A = new_A
-
-        card_values.append((i, best_value, best_pos, best_score, best_new_A))
-
-    # 根据评估值排序B牌 - 这里使用基因组评估的价值来决定处理顺序
-    card_values.sort(key=lambda x: x[1], reverse=True)
-
-    # 按照排序后的顺序处理B牌
-    for i, _, pos, score, new_A in card_values:
-        strategy.append((i, pos))
-        current_score += score
-        A_copy = new_A
-
-    print(f"基因组贪心策略: {strategy}, 预估得分: {current_score}")
-
-    return strategy  # 返回最佳策略
 
 
 if __name__ == "__main__":
