@@ -417,27 +417,24 @@ def Transformer(A, B):
     model1.load_state_dict(torch.load(model_path_1, map_location=device))
     move1, _= Transformer_predict(A, B, model1, num_a=num_a_test, num_b=num_b_test)
 
-    # 专门预测低分的模型
 
-    # score1=strategy_TrueScore(A,B,move1)
-    # # move2=DNN(A,B)
-    # # move2=complete_best_moves(move2)
-    # # score2=strategy_TrueScore(A,B,move2)
-    #
-    # genome=load_best_genome("../trained/best_genome2.pkl")
-    # move2=GA_Strategy(genome,A, B)
-    # move2=complete_best_moves(move2)
-    # score2=strategy_TrueScore(A,B,move2)
 
-    # if(score1<score2 ):
-    #     i+=1
-    #     print(f"assist win {A},{B} {i} times")
-    #
-    #     print(f"Transformer得分：{score1}")
-    #     print(f"assist得分：{score2}")
-    #     return move2
-    # else:
-    return move1
+    score1=strategy_TrueScore(A,B,move1)
+
+    genome=load_best_genome("../trained/best_genome.pkl")
+    move2=GA_Strategy(genome,A, B)
+
+    score2=strategy_TrueScore(A,B,move2)
+
+    if(score1<score2 ):
+        i+=1
+        print(f"assist win {A},{B} {i} times")
+
+        print(f"Transformer得分：{score1}")
+        print(f"assist得分：{score2}")
+        return move2
+    else:
+        return move1
 
     # return move1
 

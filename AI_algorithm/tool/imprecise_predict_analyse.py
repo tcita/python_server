@@ -11,7 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 
-from AI_algorithm.tool.CompareWithOther import Transformer
+from AI_algorithm.tool.two_model_comparing import Transformer
 from AI_algorithm.tool.tool import deal_cards_tool, load_best_genome, simulate_insertion_tool, complete_best_moves
 
 

@@ -8,7 +8,6 @@ import json
 import os
 import torch
 
-from AI_algorithm.tool.tool import complete_best_moves, calculate_score_by_strategy
 
 
 # ---------------------------
@@ -407,7 +406,7 @@ def evaluate_genomes_return_fitness(population, num_rounds=1000):
 
     for genome in population:
         try:
-            print(f"正在评估第 {population.index(genome) + 1} /{len(population)}个基因组")
+            # print(f"正在评估第 {population.index(genome) + 1} /{len(population)}个基因组")
             fitness = evaluate_genome(genome, num_rounds)
             print(f" 评估完成，适应度: {fitness}")
             fitnesses.append(fitness)
@@ -785,7 +784,7 @@ def genetic_algorithm(pop_size=300, generations=60, num_rounds=100, elitism_rati
     return best_genome  # 返回最佳基因组
 
 
-def save_best_genome(genome, filename="trained/best_genome2.pkl"):
+def save_best_genome(genome, filename="trained/best_genome.pkl"):
     with open(filename, 'wb') as file:
         pickle.dump(genome, file)  # 保存最佳基因组到文件
     print(f"Best genome saved to {filename}")  # 打印保存信息
