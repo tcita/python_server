@@ -102,6 +102,9 @@ def load_best_genome(filename="../trained/best_genome.pkl"):
         print(f"An unexpected error occurred while loading the file '{filename}': {e}")
 
 def complete_best_moves(best_moves):
+
+    if len(best_moves) == 3:
+        return best_moves
     # 提取已有的第一个元素
     existing_first_elements = {move[0] for move in best_moves}
 

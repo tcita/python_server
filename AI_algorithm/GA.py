@@ -1,3 +1,4 @@
+import multiprocessing
 import random
 import numpy as np
 import time
@@ -6,6 +7,10 @@ from multiprocessing import Pool
 import scipy.linalg
 import json
 import os
+import torch
+
+from AI_algorithm.tool.tool import complete_best_moves
+
 
 # ---------------------------
 # 游戏规则函数
@@ -279,8 +284,10 @@ def genome_choose_insertion(genome, A, x, remaining_B):
             sum_A,               # A的元素总和
             intersection_count,  # B与A的交集数量
         ], dtype=float)  # 特征向量
+        # 使用CUDA加速计算评估值（如果可用）
 
         value = np.dot(genome, features)  # 基因组的评估值
+
 
         possible_moves.append((value, pos, current_score, new_A))  # 将当前插入位置及其得分保存到列表中
 
@@ -380,8 +387,8 @@ def GA(genome, A, B):
     return try_all_card_orders(genome, A, B, return_strategy=False)
 
 # 修改后的GA_Strategy函数
-def GA_Strategy(best_genome=None, A=[], B=[]):
-    if best_genome is None:
+def GA_Strategy(genome=None, A=[], B=[]):
+    if genome is None:
         raise ValueError("Genome没有初始化!")
 
     print("-" * 20)
@@ -416,10 +423,10 @@ def GA_Strategy(best_genome=None, A=[], B=[]):
                 future_score,        # 未来得分
                 sum_A,               # A的元素总和
                 intersection_count,  # B与A的交集数量
-            ], dtype=float)
+            ], dtype=float)  # 特征向量
+            # 使用CUDA加速计算评估值（如果可用）
 
-            # 使用基因组权重评估当前插入位置的价值
-            value = np.dot(best_genome, features)
+            value = np.dot(genome, features)
 
             if value > best_value:
                 best_value = value
@@ -444,27 +451,134 @@ def GA_Strategy(best_genome=None, A=[], B=[]):
 
 # 修改后的evaluate_genome函数
 def evaluate_genome(genome, num_rounds=1000, seed_base=42):
-    total_score = 0
+    import torch
+    from AI_algorithm.tool.tool import calculate_score_by_strategy, simulate_insertion_tool
+
+    # 检查并设置 GPU 可用性
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"使用设备: {device}")
+    print(f"开始评估基因组，总共 {num_rounds} 轮...")
+    # 将基因组转换为 GPU 张量
+    genome_tensor = torch.tensor(genome, dtype=torch.float32, device=device)
+
+    # 预分配结果数组
+    total_score = torch.zeros(num_rounds, device=device)
+    # 添加进度输出
+    progress_interval = max(1, num_rounds // 10)  # 每10%输出一次
+    start_time = time.time()
+    # 使用 CUDA 并行计算
     for round in range(num_rounds):
+        if round % progress_interval == 0 or round == num_rounds - 1:
+            elapsed = time.time() - start_time
+            progress = (round + 1) / num_rounds * 100
+            print(f"评估进度: {round + 1}/{num_rounds} ({progress:.1f}%), 已用时间: {elapsed:.2f}秒")
         # 使用基于轮数的确定性种子
         seed = seed_base + round
-        A, B = deal_cards(seed=seed)
-        # GA(genome, A, B)返回分数的准确率极高  属于穷举
-        score = GA(genome, A, B)
-        total_score += score
-    return total_score / num_rounds
+
+        try:
+            # 使用 deal_cards 获取 A 和 B
+            A, B = deal_cards(seed=seed)
+
+            # 使用贪心策略生成处理顺序
+            strategy = []
+            A_copy = A.copy()
+
+            # 计算每张 B 牌的评估值
+            card_values = []
+            for i, card in enumerate(B):
+                # 对每张牌，计算其在不同位置插入的最大评估值
+                remaining_B = [B[j] for j in range(len(B)) if j != i]
+                best_value = float('-inf')
+                best_pos = -1
+
+                for pos in range(len(A_copy) + 1):
+                    score, removal_length, new_length, match_found, new_A = simulate_insertion(A_copy, card, pos)
+                    future_score = calculate_future_score(new_A, remaining_B)
+
+                    # 计算特征向量
+                    sum_A = sum(A_copy)
+                    intersection_count = len(set([card] + remaining_B) & set(A_copy))
+
+                    # 使用 PyTorch 张量计算
+                    features = torch.tensor([
+                        score,  # 当前得分
+                        removal_length,  # 移除长度
+                        new_length,  # 新长度
+                        future_score,  # 未来得分
+                        sum_A,  # A的元素总和
+                        intersection_count,  # B与A的交集数量
+                    ], dtype=torch.float32, device=device)
+
+                    # 使用基因组权重评估当前插入位置的价值
+                    value = torch.dot(genome_tensor, features)
+
+                    if value > best_value:
+                        best_value = value.item()
+                        best_pos = pos
+
+                card_values.append((i, best_value, best_pos))
+
+            # 根据评估值排序 B 牌
+            card_values.sort(key=lambda x: x[1], reverse=True)
+
+            # 生成策略
+            strategy = [(i, pos) for i, _, pos in card_values]
+
+            # 确保策略长度为3
+            complete_best_moves(strategy)
+
+            # 使用 calculate_score_by_strategy 计算分数
+            score = calculate_score_by_strategy(A.copy(), B, strategy)
+            total_score[round] = score
+
+        except Exception as e:
+            print(f"第 {round+1}/{num_rounds} 轮发生异常: {e}")
+            import traceback
+            traceback.print_exc()
+            # 出现异常时给一个较低的分数
+            total_score[round] = float('-inf')
+
+    # 计算平均分数
+    avg_score = total_score.mean().item()
+    print(f"基因组评估完成，平均得分: {avg_score}")
+
+    return avg_score
 
 
-# 使用多进程评估基因组适应度
-def evaluate_genomes_with_processes(population, num_rounds=1000, num_processes=8):
-    with Pool(processes=num_processes) as pool:  # 创建进程池
-        fitnesses = pool.starmap(evaluate_genome, [(genome, num_rounds) for genome in population])  # 并行评估每个基因组
-    return fitnesses  # 返回评估结果
+def evaluate_genomes_return_fitness(population, num_rounds=1000):
+    """
+    使用多进程评估基因组适应度，添加超时和异常处理
+
+    参数：
+    - population: 种群
+    - num_rounds: 评估轮数
+
+    - timeout: 超时时间（秒）
+
+    返回：
+    - fitnesses: 适应度列表
+    """
+    # print(f"使用 {num_processes} 个进程评估 {len(population)} 个基因组")
+    
+    fitnesses = []
+    
+    # 调试模式：同步调用
+    for genome in population:
+        try:
+            print(f"正在评估第 {population.index(genome) + 1} 个基因组")
+            fitness = evaluate_genome(genome, num_rounds)
+            print(f"基因组 {genome} 评估完成，适应度: {fitness}")
+            fitnesses.append(fitness)
+        except Exception as e:
+            print(f"基因组 {genome} 评估发生异常: {e}")
+            fitnesses.append(-float('inf'))
+    
+    return fitnesses
 
 
 # 岛屿模型实现，用于增加种群多样性
 def island_model_evolution(population, fitnesses, pop_size, tournament_size, mutation_strength,
-                           num_rounds, num_processes, islands=4, migration_interval=10, migration_rate=0.1,
+                           num_rounds, islands=4, migration_interval=10, migration_rate=0.1,
                            generation=0, max_generations=60):
     """
     实现岛屿模型进化，将总人口分成几个独立'岛屿'，定期交换个体
@@ -473,7 +587,7 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
     - population: 当前种群
     - fitnesses: 当前种群的适应度值
     - pop_size: 总人口规模
-    - tournament_size: 锦标赛选择的规模
+    - tournament_size: 锦标赛选择规模
     - mutation_strength: 变异强度
     - islands: 岛屿数量
     - migration_interval: 多少代进行一次迁移
@@ -536,8 +650,8 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
         new_island_populations.append(next_population)
 
     # 评估新岛屿种群适应度
-    new_island_fitnesses = [evaluate_genomes_with_processes(pop, num_rounds, num_processes)
-                           for pop in new_island_populations]
+    new_island_fitnesses = [evaluate_genomes_return_fitness(pop, num_rounds)
+                            for pop in new_island_populations]
 
     # 迁移过程 (如果当前代数是迁移间隔的倍数)
     # 注意：在实际使用时，需要传入当前代数作为参数，这里假设每次调用都执行迁移
@@ -560,8 +674,8 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
                 new_island_populations[target_island][replace_idx] = migrant
 
     # 重新评估迁移后的适应度
-    new_island_fitnesses = [evaluate_genomes_with_processes(pop, num_rounds, num_processes)
-                           for pop in new_island_populations]
+    new_island_fitnesses = [evaluate_genomes_return_fitness(pop, num_rounds)
+                            for pop in new_island_populations]
 
     # 合并所有岛屿种群
     new_population = []
@@ -582,7 +696,7 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
 
 # 差分进化算法实现
 def differential_evolution(population, fitnesses, pop_size, F=0.8, CR=0.5, num_rounds=1000,
-                          num_processes=8, generation=0, max_generations=60):
+                           generation=0, max_generations=60):
     """
     实现差分进化算法
 
@@ -593,7 +707,7 @@ def differential_evolution(population, fitnesses, pop_size, F=0.8, CR=0.5, num_r
     - F: 缩放因子(典型值:0.5-1.0)
     - CR: 交叉概率(典型值:0.1-0.9)
     - num_rounds: 评估轮数
-    - num_processes: 处理器数量
+
     - generation: 当前代数
     - max_generations: 最大代数
 
@@ -636,7 +750,7 @@ def differential_evolution(population, fitnesses, pop_size, F=0.8, CR=0.5, num_r
         new_population.append(trial)
 
     # 评估新种群
-    new_fitnesses = evaluate_genomes_with_processes(new_population, num_rounds, num_processes)
+    new_fitnesses = evaluate_genomes_return_fitness(new_population, num_rounds)
 
     # 选择操作：如果新个体更好，则替换旧个体
     for i in range(pop_size):
@@ -648,7 +762,7 @@ def differential_evolution(population, fitnesses, pop_size, F=0.8, CR=0.5, num_r
 
 
 # 协方差矩阵自适应(CMA-ES)算法实现
-def cmaes_evolve(population, fitnesses, pop_size, num_rounds=1000, num_processes=8, generation=0, max_generations=60):
+def cmaes_evolve(population, fitnesses, pop_size, num_rounds=1000,  generation=0, max_generations=60):
     """
     实现协方差矩阵自适应进化策略(CMA-ES)
 
@@ -657,7 +771,7 @@ def cmaes_evolve(population, fitnesses, pop_size, num_rounds=1000, num_processes
     - fitnesses: 当前种群的适应度值
     - pop_size: 种群规模
     - num_rounds: 评估轮数
-    - num_processes: 处理器数量
+
     - generation: 当前代数
     - max_generations: 最大代数
 
@@ -709,14 +823,14 @@ def cmaes_evolve(population, fitnesses, pop_size, num_rounds=1000, num_processes
             new_population.append(new_ind)
 
     # 评估新种群
-    new_fitnesses = evaluate_genomes_with_processes(new_population, num_rounds, num_processes)
+    new_fitnesses = evaluate_genomes_return_fitness(new_population, num_rounds)
 
     return new_population, new_fitnesses
 
 
 # 遗传算法过程
-def genetic_algorithm(pop_size=800, generations=60, num_rounds=2000, elitism_ratio=0.15, tournament_size=5,
-                      num_processes=8, evolution_methods=['standard', 'island', 'de', 'cmaes'],
+def genetic_algorithm(pop_size=300, generations=60, num_rounds=10, elitism_ratio=0.1, tournament_size=3,
+                      evolution_methods=['standard', 'island', 'de', 'cmaes'],
                       method_probs=[0.30, 0.40, 0.15, 0.15] , early_stop_generations=7, early_stop_threshold=0.01):
     """
     遗传算法主函数
@@ -727,7 +841,7 @@ def genetic_algorithm(pop_size=800, generations=60, num_rounds=2000, elitism_rat
     - num_rounds: 评估每个基因组的回合数
     - elitism_ratio: 精英比例
     - tournament_size: 锦标赛选择规模
-    - num_processes: 并行进程数
+
     - evolution_methods: 可用的进化方法列表
     - method_probs: 各进化方法的使用概率
     - early_stop_generations: 早停的连续代数
@@ -758,7 +872,7 @@ def genetic_algorithm(pop_size=800, generations=60, num_rounds=2000, elitism_rat
     last_best_fitness = -float('inf')
 
     for gen in range(generations):  # 迭代每个世代
-        fitnesses = evaluate_genomes_with_processes(population, num_rounds, num_processes)  # 评估种群适应度
+        fitnesses = evaluate_genomes_return_fitness(population, num_rounds)  # 评估种群适应度
         gen_best, gen_avg = max(fitnesses), np.mean(fitnesses)  # 获取当前世代的最佳适应度和平均适应度
         best_fitness_history.append(gen_best)  # 记录最佳适应度
         avg_fitness_history.append(gen_avg)  # 记录平均适应度
@@ -811,11 +925,11 @@ def genetic_algorithm(pop_size=800, generations=60, num_rounds=2000, elitism_rat
         if method == 'standard':
             pass  # 使用标准遗传算法
         elif method == 'island':
-            next_population, _ = island_model_evolution(next_population, fitnesses, pop_size, tournament_size, 0.5, num_rounds, num_processes, generation=gen, max_generations=generations)
+            next_population, _ = island_model_evolution(next_population, fitnesses, pop_size, tournament_size, 0.5, num_rounds, generation=gen, max_generations=generations)
         elif method == 'de':
-            next_population, _ = differential_evolution(next_population, fitnesses, pop_size, F=0.8, CR=0.5, num_rounds=num_rounds, num_processes=num_processes, generation=gen, max_generations=generations)
+            next_population, _ = differential_evolution(next_population, fitnesses, pop_size, F=0.8, CR=0.5, num_rounds=num_rounds, generation=gen, max_generations=generations)
         elif method == 'cmaes':
-            next_population, _ = cmaes_evolve(next_population, fitnesses, pop_size, num_rounds=num_rounds, num_processes=num_processes, generation=gen, max_generations=generations)
+            next_population, _ = cmaes_evolve(next_population, fitnesses, pop_size, num_rounds=num_rounds, generation=gen, max_generations=generations)
 
         population = next_population  # 更新种群
 
@@ -829,9 +943,9 @@ def genetic_algorithm(pop_size=800, generations=60, num_rounds=2000, elitism_rat
     return best_genome  # 返回最佳基因组
 
 
-def save_best_genome(best_genome, filename="trained/best_genome.pkl"):
+def save_best_genome(genome, filename="trained/best_genome.pkl"):
     with open(filename, 'wb') as file:
-        pickle.dump(best_genome, file)  # 保存最佳基因组到文件
+        pickle.dump(genome, file)  # 保存最佳基因组到文件
     print(f"Best genome saved to {filename}")  # 打印保存信息
 
     # 打印基因组各特征的权重
@@ -841,7 +955,7 @@ def save_best_genome(best_genome, filename="trained/best_genome.pkl"):
     ]
 
     print("\n基因组特征权重:")
-    for i, (name, weight) in enumerate(zip(feature_names, best_genome)):
+    for i, (name, weight) in enumerate(zip(feature_names, genome)):
         print(f"{name}: {weight:.4f}")
 
 
@@ -912,9 +1026,9 @@ def load_best_genome(filename="../trained/best_genome.pkl"):
     try:
         # 尝试打开并加载文件
         with open(filename, 'rb') as file:
-            best_genome = pickle.load(file)
+            genome = pickle.load(file)
         # print(f"genome loaded from {filename}")
-        return best_genome
+        return genome
     except FileNotFoundError:
         # 文件不存在时的处理
         print(f"Error: The file '{filename}' was not found. Please check the file path.")
@@ -929,8 +1043,8 @@ def load_best_genome(filename="../trained/best_genome.pkl"):
         print(f"An unexpected error occurred while loading the file '{filename}': {e}")
 
 
-def GA_Strategy(best_genome=None, A=[], B=[]):
-    if best_genome is None:
+def GA_Strategy(genome=None, A=[], B=[]):
+    if genome is None:
         raise ValueError("Genome没有初始化!")
 
     print("-" * 20)
@@ -968,7 +1082,7 @@ def GA_Strategy(best_genome=None, A=[], B=[]):
             ], dtype=float)
 
             # 使用基因组权重评估当前插入位置的价值
-            value = np.dot(best_genome, features)
+            value = np.dot(genome, features)
 
             if value > best_value:
                 best_value = value
@@ -993,10 +1107,10 @@ def GA_Strategy(best_genome=None, A=[], B=[]):
 
 
 if __name__ == "__main__":
-    best_genome = genetic_algorithm()  # 运行遗传算法获取最佳基因组
-    print("\nGenome model : ", best_genome)  # 打印最佳基因组
-    # evaluate_final_model(best_genome)  # 评估最终模型性能
-    save_best_genome(best_genome)  # 保存最佳基因组
+    genome = genetic_algorithm()  # 运行遗传算法获取最佳基因组
+    print("\nGenome model : ", genome)  # 打印最佳基因组
+    # evaluate_final_model(genome)  # 评估最终模型性能
+    save_best_genome(genome)  # 保存最佳基因组
     #
     # genome=load_best_genome()
     # GA_partial = partial(GA, genome)
