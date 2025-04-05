@@ -332,7 +332,7 @@ def evaluate_all_insertion_by_genome(genome, A, B):
 
     # 检查CUDA可用性并设置设备
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"使用设备: {device}")
+
 
 
     # 将基因组转换为torch张量以便GPU加速
@@ -407,7 +407,7 @@ def evaluate_genome(genome, num_rounds=1000, seed_base=42):
 
     # 检查并设置 GPU 可用性
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+    print(f"使用设备: {device}")
     print(f"开始评估基因组，总共 {num_rounds} 轮...")
 
     # 将基因组转换为 GPU 张量
@@ -445,9 +445,6 @@ def evaluate_genome(genome, num_rounds=1000, seed_base=42):
         # 复制批次得分到总得分
         total_scores[batch_start:batch_end] = batch_scores
 
-        # 进度跟踪
-        if (batch_start + batch_size) % progress_interval == 0:
-            print(f"进度: {(batch_start + batch_size) / num_rounds * 100:.2f}%")
 
     # 计算最终平均分
     mean_score = torch.mean(total_scores).item()
@@ -473,10 +470,10 @@ def evaluate_genomes_return_fitness(population, num_rounds=1000):
 
     fitnesses = []
 
-    # 调试模式：同步调用
+
     for genome in population:
         try:
-            print(f"正在评估第 {population.index(genome) + 1} 个基因组")
+            print(f"正在评估第 {population.index(genome) + 1} /{len(population)}个基因组")
             fitness = evaluate_genome(genome, num_rounds)
             print(f"基因组 {genome} 评估完成，适应度: {fitness}")
             fitnesses.append(fitness)
