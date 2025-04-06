@@ -165,14 +165,14 @@ def Compare_TwoModel(model, other_model, rounds=1000, plot=False):
 
         # 测试集生成不应该有限制
 
-        A, B = deal_cards_tool()  # 初始A, B   A, B 都是 list<int>
+        A, B = deal_cards_tool()
 
 
-        print("  生成 A, B 成功")
+
         print(A)
         print(B)
 
-# 这里的move并没有使用 计算它是为了统计时间
+
         score_1, time_1,move_1 = TestModel_with_given_A_B(model, A, B)
 
 

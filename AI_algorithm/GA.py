@@ -156,8 +156,8 @@ def GA_Strategy(genome, A, B):
 
     return strategy
 
-
-def evaluate_genome(genome, num_rounds=1000, seed_base=42):
+# 每一个generation执行pop_size次
+def evaluate_genome(genome, num_rounds=1000, seed_base=111):
     import torch
     import numpy as np
     from AI_algorithm.tool.tool import calculate_score_by_strategy
@@ -169,8 +169,8 @@ def evaluate_genome(genome, num_rounds=1000, seed_base=42):
     # 将基因组转换为 GPU 张量
     # genome_tensor = torch.tensor(genome, dtype=torch.float32, device=device)
 
-    # 批处理大小，根据GPU内存调整
-    batch_size = 64 if device.type == 'cuda' else 32
+    # 批处理大小
+    batch_size = 1024
 
     # 预分配结果数组
     total_scores = torch.zeros(num_rounds, dtype=torch.float32, device=device)
@@ -179,6 +179,7 @@ def evaluate_genome(genome, num_rounds=1000, seed_base=42):
     for batch_start in range(0, num_rounds, batch_size):
         batch_end = min(batch_start + batch_size, num_rounds)
         batch_size_actual = batch_end - batch_start
+
 
         # 为当前批次生成所有A和B
         batch_A = []
@@ -192,8 +193,7 @@ def evaluate_genome(genome, num_rounds=1000, seed_base=42):
         batch_scores = torch.zeros(batch_size_actual, dtype=torch.float32, device=device)
 
         for j in range(batch_size_actual):
-            # 修改：直接传递 genome 而不是 genome_tensor.cpu().numpy()
-            # 这样 evaluate_all_insertion_by_genome 可以自己决定是否使用 GPU
+
             strategy = GA_Strategy(genome, batch_A[j], batch_B[j])
             batch_scores[j] = calculate_score_by_strategy(batch_A[j], batch_B[j], strategy)
 
@@ -206,36 +206,37 @@ def evaluate_genome(genome, num_rounds=1000, seed_base=42):
     print(f"基因组平均得分: {mean_score}")
 
     return mean_score  # 返回平均得分
+# def evaluate_genomes_return_fitness(population, num_rounds=1000):
+#
+#
+#
+#     fitnesses = []
+#
+#
+#     for genome in population:
+#         try:
+#             # print(f"正在评估第 {population.index(genome) + 1} /{len(population)}个基因组")
+#             fitness = evaluate_genome(genome, num_rounds)
+#
+#             fitnesses.append(fitness)
+#         except Exception as e:
+#             print(f"基因组 {genome} 评估发生异常: {e}")
+#             fitnesses.append(-float('inf'))
+#
+#     return fitnesses
+
+
 def evaluate_genomes_return_fitness(population, num_rounds=1000):
-    """
-    使用多进程评估基因组适应度，添加超时和异常处理
+    """并行评估多个基因组"""
 
-    参数：
-    - population: 种群
-    - num_rounds: 评估轮数
-
-    - timeout: 超时时间（秒）
-
-    返回：
-    - fitnesses: 适应度列表
-    """
-    # print(f"使用 {num_processes} 个进程评估 {len(population)} 个基因组")
-
-    fitnesses = []
-
-
-    for genome in population:
-        try:
-            # print(f"正在评估第 {population.index(genome) + 1} /{len(population)}个基因组")
-            fitness = evaluate_genome(genome, num_rounds)
-
-            fitnesses.append(fitness)
-        except Exception as e:
-            print(f"基因组 {genome} 评估发生异常: {e}")
-            fitnesses.append(-float('inf'))
+    # 创建进程池
+    with multiprocessing.Pool(8) as pool:
+        # 准备评估参数
+        eval_args = [(genome, num_rounds) for genome in population]
+        # 并行计算
+        fitnesses = pool.starmap(evaluate_genome, eval_args)
 
     return fitnesses
-
 
 # 岛屿模型实现，用于增加种群多样性
 def island_model_evolution(population, fitnesses, pop_size, tournament_size, mutation_strength,
@@ -425,7 +426,7 @@ def differential_evolution(population, fitnesses, pop_size, F=0.8, CR=0.5, num_r
 
 
 # 遗传算法过程
-def genetic_algorithm(pop_size=300, generations=60, num_rounds=100, elitism_ratio=0.1, tournament_size=3,
+def genetic_algorithm(pop_size=600, generations=60, num_rounds=300, elitism_ratio=0.1, tournament_size=3,
                       evolution_methods=['standard', 'island', 'de'],
                       method_probs=[0.4, 0.3, 0.3] , early_stop_generations=5, early_stop_threshold=0.01):
     """
@@ -450,13 +451,17 @@ def genetic_algorithm(pop_size=300, generations=60, num_rounds=100, elitism_rati
     # 在genetic_algorithm函数中修改初始化种群的代码
     population = []
     for _ in range(pop_size):
-        # 为当前得分和未来得分特征赋予更高的初始权重
         genome = []
-        for i in range(6):
-            if i == 0 or i == 3:  # 当前得分和未来得分的索引
-                genome.append(random.uniform(0, 2))  # 更高的正向权重
-            else:
-                genome.append(random.uniform(-1, 1))
+        # 引入更多随机性
+        if random.random() < 0.7:  # 70%的个体按原方式初始化
+            for i in range(6):
+                if i == 0 or i == 3:
+                    genome.append(random.uniform(0, 2))
+                else:
+                    genome.append(random.uniform(-1, 1))
+        else:  # 30%的个体完全随机初始化
+            for i in range(6):
+                genome.append(random.uniform(-2, 2))
         population.append(genome)
     best_fitness_history, avg_fitness_history = [], []  # 初始化历史最佳适应度和平均适应度列表
     best_genome, best_fitness = None, -float('inf')  # 初始化最佳基因组和最佳适应度
@@ -510,6 +515,9 @@ def genetic_algorithm(pop_size=300, generations=60, num_rounds=100, elitism_rati
             parent1, parent2 = random.sample(selected, 2)  # 选择两个父本
             child = [(p1 + p2) / 2 if random.random() < 0.7 else p1 for p1, p2 in zip(parent1, parent2)]  # 交叉产生子代
             mutation_rate = max(0.1, 0.3 - (gen / generations) * 0.2)  # 计算变异率
+            if early_stop_counter > 0:
+                mutation_rate += 0.1 * early_stop_counter  # 每停滞一代增加10%的变异率
+            mutation_rate = min(mutation_rate, 0.8)  # 但不超过80%
             child = [gene + random.gauss(0, 0.5) if random.random() < mutation_rate else gene for gene in child]  # 变异
             next_population.append(child)  # 添加子代到下一代种群
 
@@ -532,7 +540,7 @@ def genetic_algorithm(pop_size=300, generations=60, num_rounds=100, elitism_rati
     print(f"Completed Generations: {gen + 1} of {generations}")  # 打印实际完成的代数
 
     # 分析不同进化方法的性能
-    analyze_evolution_methods(best_fitness_history, method_history)
+    analyze_evolution_methods(best_fitness_history, method_history,evolution_methods)
 
     return best_genome  # 返回最佳基因组
 
