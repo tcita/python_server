@@ -12,7 +12,7 @@ def has_duplicates(lst):
 
 
 h=0
-def generate_training_data(num_samples=15000):
+def generate_training_data(num_samples=50000):
     dataset = []
     global h
     for i in range(num_samples):
@@ -33,6 +33,24 @@ def generate_training_data(num_samples=15000):
 
             print(f"分数{max_score}, 最佳移动:{best_moves}")
             continue
+
+        # whole=[0,1,2]
+        # if len(best_moves)==0:
+        #     best_moves=[[0,0],[1,0],[2,0]]
+        #
+        # if len(best_moves)==1:
+        #     i=best_moves[0][0]
+        #     whole.remove(i)
+        #     best_moves.append([whole[0], 0],[whole[1],0])
+        #
+        #     best_moves.append([whole[0],0])
+        # if len(best_moves)==2:
+        #     i=best_moves[0][0]
+        #     j=best_moves[1][0]
+        #     whole.remove(i)
+        #     whole.remove(j)
+        #     best_moves.append([whole[0],0])
+
 
 
 

@@ -23,7 +23,7 @@ def init_deck():
 # 在文件顶部添加全局缓存
 _json_cache = {}
 
-def deal_cards(json_file="AI_algorithm/json/transformer_error_cases.json", seed=None):
+def deal_cards(json_file="AI_algorithm/json/data_raw.json", seed=None):
     # 如果提供了随机种子，设置随机数生成器
     if seed is not None:
         random.seed(seed)
@@ -164,8 +164,7 @@ def evaluate_genome(genome, num_rounds=1000, seed_base=42):
 
     # 检查并设置 GPU 可用性
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"使用设备: {device}")
-    print(f"开始评估基因组，总共 {num_rounds} 轮...")
+
 
     # 将基因组转换为 GPU 张量
     # genome_tensor = torch.tensor(genome, dtype=torch.float32, device=device)
@@ -204,8 +203,7 @@ def evaluate_genome(genome, num_rounds=1000, seed_base=42):
     # 计算最终平均分
     mean_score = torch.mean(total_scores).item()
 
-    print(f"基因组评估完成:")
-    print(f"平均得分: {mean_score}")
+    print(f"基因组平均得分: {mean_score}")
 
     return mean_score  # 返回平均得分
 def evaluate_genomes_return_fitness(population, num_rounds=1000):
@@ -230,7 +228,7 @@ def evaluate_genomes_return_fitness(population, num_rounds=1000):
         try:
             # print(f"正在评估第 {population.index(genome) + 1} /{len(population)}个基因组")
             fitness = evaluate_genome(genome, num_rounds)
-            print(f" 评估完成，适应度: {fitness}")
+
             fitnesses.append(fitness)
         except Exception as e:
             print(f"基因组 {genome} 评估发生异常: {e}")
@@ -424,77 +422,12 @@ def differential_evolution(population, fitnesses, pop_size, F=0.8, CR=0.5, num_r
     return new_population, new_fitnesses
 
 
-# 协方差矩阵自适应(CMA-ES)算法实现
-def cmaes_evolve(population, fitnesses, pop_size, num_rounds=1000,  generation=0, max_generations=60):
-    """
-    实现协方差矩阵自适应进化策略(CMA-ES)
-
-    参数：
-    - population: 当前种群
-    - fitnesses: 当前种群的适应度值
-    - pop_size: 种群规模
-    - num_rounds: 评估轮数
-
-    - generation: 当前代数
-    - max_generations: 最大代数
-
-    返回：
-    - new_population: 进化后的新种群
-    - new_fitnesses: 新种群的适应度
-    """
-    # 计算当前种群的均值向量
-    n = len(population[0])  # 个体维度
-    mean = np.zeros(n)
-    for ind in population:
-        mean += np.array(ind)
-    mean /= pop_size
-
-    # 动态调整步长sigma，随着进化过程逐渐减小
-    progress_ratio = generation / max_generations if max_generations > 0 else 0.5
-    sigma = max(0.1, 0.8 - 0.6 * progress_ratio)  # 从0.8逐渐降低到0.2
-
-    # 初始化协方差矩阵为单位矩阵
-    C = np.identity(n)
-
-    # 计算种群中个体与均值的差异，构建协方差矩阵
-    if pop_size > 1:  # 确保有足够样本计算协方差
-        diff_matrix = np.array([np.array(ind) - mean for ind in population])
-        C = np.cov(diff_matrix.T) + 1e-8 * np.identity(n)  # 添加小值避免奇异矩阵
-
-    # 生成新种群
-    new_population = []
-
-    # 特征值分解
-    try:
-        eigvals, eigvecs = scipy.linalg.eigh(C)
-        # 确保特征值为正
-        eigvals = np.maximum(eigvals, 1e-8)
-
-        # 生成新的个体
-        for _ in range(pop_size):
-            # 生成标准正态分布的随机向量
-            z = np.random.randn(n)
-            # 变换为多元正态分布
-            s = eigvecs.dot(np.diag(np.sqrt(eigvals))).dot(z)
-            # 生成新个体
-            new_ind = list(mean + sigma * s)
-            new_population.append(new_ind)
-    except:
-        # 如果特征值分解失败，使用简单的随机变异
-        for _ in range(pop_size):
-            new_ind = list(mean + sigma * np.random.randn(n))
-            new_population.append(new_ind)
-
-    # 评估新种群
-    new_fitnesses = evaluate_genomes_return_fitness(new_population, num_rounds)
-
-    return new_population, new_fitnesses
 
 
 # 遗传算法过程
 def genetic_algorithm(pop_size=300, generations=60, num_rounds=100, elitism_ratio=0.1, tournament_size=3,
-                      evolution_methods=['standard', 'island', 'de', 'cmaes'],
-                      method_probs=[0.30, 0.40, 0.15, 0.15] , early_stop_generations=7, early_stop_threshold=0.01):
+                      evolution_methods=['standard', 'island', 'de'],
+                      method_probs=[0.4, 0.3, 0.3] , early_stop_generations=5, early_stop_threshold=0.01):
     """
     遗传算法主函数
 
@@ -591,8 +524,6 @@ def genetic_algorithm(pop_size=300, generations=60, num_rounds=100, elitism_rati
             next_population, _ = island_model_evolution(next_population, fitnesses, pop_size, tournament_size, 0.5, num_rounds, generation=gen, max_generations=generations)
         elif method == 'de':
             next_population, _ = differential_evolution(next_population, fitnesses, pop_size, F=0.8, CR=0.5, num_rounds=num_rounds, generation=gen, max_generations=generations)
-        elif method == 'cmaes':
-            next_population, _ = cmaes_evolve(next_population, fitnesses, pop_size, num_rounds=num_rounds, generation=gen, max_generations=generations)
 
         population = next_population  # 更新种群
 

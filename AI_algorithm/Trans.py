@@ -605,55 +605,11 @@ def train():
 
     # 调用 train_model 时传递固定长度，并使用新的模型路径
     # epochs=1000  warmup_epochs=50 是对应10万个样本的
-    train_model(train_data, epochs=500, batch_size=2048,
+    train_model(train_data, epochs=700, batch_size=2048,
                 model_path="./trained/transformer_move_predictor_6x3.pth", # 新路径名
                 num_a=fixed_num_a, num_b=fixed_num_b) # 传递 6 和 3
 
 
 if __name__ == "__main__":
     train()
-
-    # --- 可选的测试代码 ---
-    # print("\n--- 开始测试预测功能 (6x3) ---")
-    # try:
-    #     num_a_test = 6 # <--- 修改
-    #     num_b_test = 3
-    #     # 确保这些参数与训练时一致
-    #     d_model_test = 128
-    #     nhead_test = 4
-    #     num_layers_test = 3
-    #     dim_ff_test = 256
-
-    #     test_model = TransformerMovePredictor(
-    #         num_a=num_a_test, num_b=num_b_test, d_model=d_model_test,
-    #         nhead=nhead_test, num_encoder_layers=num_layers_test,
-    #         dim_feedforward=dim_ff_test
-    #     ).to(device)
-
-    #     model_path_test = "./trained/transformer_move_predictor_6x3.pth" # <--- 修改
-    #     test_model.load_state_dict(torch.load(model_path_test, map_location=device))
-    #     print(f"成功加载模型: {model_path_test}")
-
-    #     # 创建 6x3 的测试样本
-    #     test_A1 = [1, 2, 3, 4, 5, 6]
-    #     test_B1 = [7, 8, 9]
-
-    #     test_A2 = [10, 30, 50, 20, 40, 60]
-    #     test_B2 = [25, 35, 15]
-
-    #     samples = [(test_A1, test_B1), (test_A2, test_B2)]
-
-    #     for A, B in samples:
-    #         predicted_strategy, predicted_score = DNNpredict(A, B, test_model, num_a=num_a_test, num_b=num_b_test) # <--- 传递 num_a=6
-    #         print(f"输入: A={A}, B={B}")
-    #         print(f"预测策略: {predicted_strategy}")
-    #         print(f"预测得分: {predicted_score}")
-    #         print("-" * 20)
-
-    # except FileNotFoundError:
-    #      print(f"测试错误: 找不到模型文件 '{model_path_test}'。请先运行训练。")
-    # except Exception as e:
-    #      print(f"测试预测时发生错误: {e}")
-    #      import traceback
-    #      traceback.print_exc()
 

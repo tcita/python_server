@@ -545,7 +545,7 @@ if __name__ == "__main__":
 
 
 
-    Compare_TwoModel(genome,Transformer,rounds=1000,plot=True)
+    Compare_TwoModel(genome,Transformer,rounds=10000,plot=True)
     # A=[7, 9, 5, 13, 3, 10]
     # B=[7, 5, 5]
     # A=[11, 5, 13, 10, 1, 12]
