@@ -554,31 +554,28 @@ def save_best_genome(genome, filename="trained/best_genome.pkl"):
 
 
 # 分析进化方法的性能
-def analyze_evolution_methods(best_fitness_history, method_history):
+def analyze_evolution_methods(best_fitness_history, method_history, all_methods):
     """
-    分析不同进化方法的性能
-
-    参数：
-    - best_fitness_history: 每代的最佳适应度历史记录
-    - method_history: 每代使用的进化方法历史记录
+    分析不同进化方法的性能，确保所有方法都会被分析
     """
-    import matplotlib.pyplot as plt
+    # 初始化所有方法的性能列表
+    method_performance = {method: [] for method in all_methods}
 
     # 按照进化方法分组
-    method_performance = {}
     for method, fitness in zip(method_history, best_fitness_history):
-        if method not in method_performance:
-            method_performance[method] = []
         method_performance[method].append(fitness)
 
     # 计算每种方法的平均性能和最大性能
     print("\n各进化方法性能分析:")
     for method, fitnesses in method_performance.items():
-        avg_fitness = sum(fitnesses) / len(fitnesses)
-        max_fitness = max(fitnesses)
-        improve_rate = (fitnesses[-1] - fitnesses[0]) / fitnesses[0] if len(fitnesses) > 1 else 0
-        print(f"{method}方法: 平均适应度={avg_fitness:.2f}, 最大适应度={max_fitness:.2f}, 改进率={improve_rate:.2%}")
-
+        if fitnesses:  # 如果该方法被使用过
+            avg_fitness = sum(fitnesses) / len(fitnesses)
+            max_fitness = max(fitnesses)
+            improve_rate = (fitnesses[-1] - fitnesses[0]) / fitnesses[0] if len(fitnesses) > 1 else 0
+            print(
+                f"{method}方法: 平均适应度={avg_fitness:.2f}, 最大适应度={max_fitness:.2f}, 改进率={improve_rate:.2%}, 使用次数={len(fitnesses)}")
+        else:  # 如果该方法未被使用
+            print(f"{method}方法: 未被使用")
 #
 
 

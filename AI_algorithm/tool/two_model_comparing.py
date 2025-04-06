@@ -162,13 +162,12 @@ def Compare_TwoModel(model, other_model, rounds=1000, plot=False):
 
     for i in range(rounds):
         print(f"第 {i + 1} 轮测试")  # 观察是否卡在某一轮
-        # 不应该使用无法得分的A,B训练
-        while True:
-            A, B = deal_cards_tool()  # 初始A, B   A, B 都是 list<int>
 
-            # 检查 A 和 B 是否有任何重复的元素,确保只用能得分的A,B训练
-            if  set(A) & set(B):  # 如果 A 和 B 有重复元素
-                break  # 退出循环，继续处理这对 A, B
+        # 测试集生成不应该有限制
+
+        A, B = deal_cards_tool()  # 初始A, B   A, B 都是 list<int>
+
+
         print("  生成 A, B 成功")
         print(A)
         print(B)
@@ -546,11 +545,3 @@ if __name__ == "__main__":
 
 
     Compare_TwoModel(genome,Transformer,rounds=10000,plot=True)
-    # A=[7, 9, 5, 13, 3, 10]
-    # B=[7, 5, 5]
-    # A=[11, 5, 13, 10, 1, 12]
-    # B=[1, 9, 4]
-    # s=[[1, 0], [2, 0], [0, 0]]
-    # print(strategy_TrueScore(A,B,s))
-#     print(DNN(A,B))
-#     Compare_TwoModel(Transformerscore,Transformerscore)
