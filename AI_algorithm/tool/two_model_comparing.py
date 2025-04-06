@@ -1,5 +1,4 @@
-import io
-import pickle
+
 import time
 import numpy as np
 import torch
@@ -266,111 +265,205 @@ def Compare_TwoModel(model, other_model, rounds=1000, plot=False):
     print("\n【算法2与真实值的偏差分析】\n")
     print("*所有偏差均按照真实值相应数据减去预测值相应数据的方式计算")
     compute_statistical_tests(data_2, data_true)
-   
-    # 添加可视化部分
+
+    plot = True  # Set to True to generate plot
+
     if plot:
-        # 计算准确率指标
-        error_1 = data_true - data_1
-        error_2 = data_true - data_2
-        
-        # 相对误差百分比
-        rel_error_1 = (data_true - data_1) / (data_true + 1e-10) * 100  # 避免除零
-        rel_error_2 = (data_true - data_2) / (data_true + 1e-10) * 100
-        
-        # 创建一个2x2的图表布局，增加图表大小和间距
-        fig, axs = plt.subplots(2, 2, figsize=(20, 15))
-        plt.subplots_adjust(hspace=0.3, wspace=0.3)  # 增加子图之间的间距
-        
+        # 创建一个1x2的图表布局
+        fig, axs = plt.subplots(1, 2, figsize=(20, 8))
+
         # 设置全局字体大小
         plt.rcParams.update({'font.size': 12})
-        
-        # 1. 小提琴图比较
-        axs[0, 0].violinplot([data_true, data_1, data_2], showmeans=True, showmedians=True)
-        axs[0, 0].set_title('Score Distribution Violin Plot', fontsize=14)
-        axs[0, 0].set_ylabel('Score', fontsize=12)
-        axs[0, 0].set_xticks([1, 2, 3])
-        axs[0, 0].set_xticklabels(['Ground Truth', 'Algorithm 1', 'Algorithm 2'])
-        axs[0, 0].tick_params(axis='both', labelsize=11)
-        axs[0, 0].grid(True, linestyle='--', alpha=0.7)
-        
-        # 2. 误差分布直方图 - 算法1
-        axs[0, 1].hist(error_1, bins=30, alpha=0.7, color='blue')
-        axs[0, 1].axvline(x=0, color='red', linestyle='--')
-        axs[0, 1].set_title('Algorithm 1 Error Distribution', fontsize=14)
-        axs[0, 1].set_xlabel('Error (Ground Truth - Predicted)', fontsize=10)
-       
-        axs[0, 1].set_ylabel('Frequency', fontsize=12)
-        axs[0, 1].tick_params(axis='both', labelsize=11)
-        axs[0, 1].grid(True, linestyle='--', alpha=0.7)
-        
-        # 3. 误差分布直方图 - 算法2
-        axs[1, 0].hist(error_2, bins=30, alpha=0.7, color='green')
-        axs[1, 0].axvline(x=0, color='red', linestyle='--')
-        axs[1, 0].set_title('Algorithm 2 Error Distribution', fontsize=14)
-        axs[1, 0].set_xlabel('Error (Ground Truth - Predicted)', fontsize=9)
-        axs[1, 0].set_ylabel('Frequency', fontsize=12)
-        axs[1, 0].tick_params(axis='both', labelsize=11)
-        axs[1, 0].grid(True, linestyle='--', alpha=0.7)
-        
-        # 4. 相对误差累积分布
-        # 计算各个误差范围内的样本比例
-        error_ranges = [0, 5, 10, 15, 20, 30, 50, 100]
-        algo1_in_range = []
-        algo2_in_range = []
-        
-        for err_range in error_ranges:
-            algo1_in_range.append(np.mean(np.abs(rel_error_1) <= err_range) * 100)
-            algo2_in_range.append(np.mean(np.abs(rel_error_2) <= err_range) * 100)
-        
-        axs[1, 1].plot(error_ranges, algo1_in_range, 'o-', label='Algorithm 1')
-        axs[1, 1].plot(error_ranges, algo2_in_range, 's-', label='Algorithm 2')
-        axs[1, 1].set_title('Cumulative Relative Error Distribution', fontsize=9)
-      
-        axs[1, 1].set_xlabel('Relative Error Range (%)', fontsize=12)
-        axs[1, 1].set_ylabel('Sample Percentage (%)', fontsize=12)
-        axs[1, 1].tick_params(axis='both', labelsize=11)
-        axs[1, 1].legend(fontsize=12)
-        axs[1, 1].grid(True, linestyle='--', alpha=0.7)
-        
-        plt.tight_layout(pad=5.0)  # 增加边距
-        plt.savefig('model_comparison_results.png', dpi=300, bbox_inches='tight')
+
+        # === 计算全局范围和区间 ===
+        interval_width = 5
+
+        # Calculate min/max based on ALL THREE datasets for Y-axis scaling
+        overall_min_val = np.min([np.min(data_true), np.min(data_1), np.min(data_2)])
+        overall_max_val = np.max([np.max(data_true), np.max(data_1), np.max(data_2)])
+
+        # Define intervals based on this overall range, rounded to interval_width
+        min_score = int(np.floor(overall_min_val / interval_width) * interval_width)
+        max_score = int(np.ceil(overall_max_val / interval_width) * interval_width)
+
+        # Ensure max_score is at least one interval above min_score
+        if max_score <= min_score:
+            max_score = min_score + interval_width
+
+        # Recalculate intervals and centers based on the new min_score, max_score
+        intervals = list(range(min_score, max_score + interval_width, interval_width))
+        if len(intervals) < 2:
+            print(f"Warning: Not enough data range ({overall_min_val:.2f} to {overall_max_val:.2f}) "
+                  f"to create multiple intervals with width {interval_width}.")
+            min_score_adj = int(np.floor(overall_min_val))
+            max_score_adj = int(np.ceil(overall_max_val))
+            if max_score_adj <= min_score_adj: max_score_adj = min_score_adj + 1
+            intervals = [min_score_adj, max_score_adj]
+            interval_width_adj = intervals[1] - intervals[0]  # Use adjusted width
+            interval_centers = np.array([intervals[0]]) + interval_width_adj / 2.0
+            interval_labels = [f"[{intervals[0]},{intervals[1]})"]
+
+        else:
+            interval_labels = [f"[{intervals[i]},{intervals[i + 1]})" for i in range(len(intervals) - 1)]
+            interval_centers = np.array(intervals[:-1]) + (intervals[1] - intervals[0]) / 2.0
+
+        # === 偏差计算 (基于 data_true 的值落入哪个区间) ===
+        interval_errors_1 = [[] for _ in range(len(intervals) - 1)]
+        interval_errors_2 = [[] for _ in range(len(intervals) - 1)]
+
+        for i in range(len(data_true)):
+            true_val = data_true[i]
+            bin_index = -1
+            for j in range(len(intervals) - 1):
+                if intervals[j] <= true_val < intervals[j + 1]:
+                    bin_index = j
+                    break
+            if bin_index == -1 and true_val == intervals[-1] and len(intervals) > 1:
+                bin_index = len(intervals) - 2
+
+            if bin_index != -1 and 0 <= bin_index < len(interval_errors_1):
+                interval_errors_1[bin_index].append(data_1[i] - data_true[i])
+                interval_errors_2[bin_index].append(data_2[i] - data_true[i])
+
+        mean_errors_1 = [np.mean(errors) if errors else 0 for errors in interval_errors_1]
+        mean_errors_2 = [np.mean(errors) if errors else 0 for errors in interval_errors_2]
+        sample_counts = [len(errors) for errors in interval_errors_1]
+
+        # === 绘图 ===
+
+        # 1. 小提琴图 (Violin Plot - Left: axs[0])
+        violin_parts = axs[0].violinplot([data_true, data_1, data_2], showmeans=True, showmedians=False)
+        axs[0].set_title('Score Distribution Violin Plot', fontsize=14)
+        axs[0].set_ylabel('Score', fontsize=12)
+        axs[0].set_xticks([1, 2, 3])
+        axs[0].set_xticklabels(['Ground Truth', 'Algorithm 1', 'Algorithm 2'])
+        axs[0].tick_params(axis='both', labelsize=11)
+        axs[0].grid(True, linestyle='--', alpha=0.6, axis='y')
+
+        # 设置小提琴图的y轴范围和刻度 (using the overall min/max score)
+        axs[0].set_ylim(min_score, max_score)
+        axs[0].set_yticks(intervals)
+        axs[0].set_yticklabels([f'{i}' for i in intervals])
+
+        # 2. 偏差条形图 (Bias Plot - Right: axs[1]) - Horizontal Bar Chart
+        current_interval_width = intervals[1] - intervals[0]  # Use actual width
+        bar_total_thickness = current_interval_width * 0.7
+        individual_bar_thickness = bar_total_thickness / 2
+
+        # Plot bars
+        axs[1].barh(interval_centers - individual_bar_thickness / 2, mean_errors_1,
+                    height=individual_bar_thickness, label='Algorithm 1 Bias', color='tab:blue', alpha=0.8)
+        axs[1].barh(interval_centers + individual_bar_thickness / 2, mean_errors_2,
+                    height=individual_bar_thickness, label='Algorithm 2 Bias', color='tab:green', alpha=0.8)
+
+        # --- Set up axs[1] y-axis to align with axs[0] ---
+        axs[1].set_ylim(min_score, max_score)
+        axs[1].set_yticks(intervals)
+        axs[1].set_yticklabels([f'{i}' for i in intervals])
+
+        axs[1].set_title('Mean Prediction Bias by True Score Interval', fontsize=14)
+        axs[1].set_xlabel('Mean Bias (Predicted - True)', fontsize=12)
+        axs[1].set_ylabel('True Score', fontsize=12)
+        axs[1].tick_params(axis='both', labelsize=11)
+        axs[1].axvline(x=0, color='red', linestyle='--', linewidth=1)
+        axs[1].legend(fontsize=10)
+        axs[1].grid(True, linestyle='--', alpha=0.6, axis='x')
+
+        # --- 添加样本数量标签 (Adaptive Placement Logic) ---
+
+        # 1. Draw canvas to get reliable initial limits
+        fig.canvas.draw()
+
+        # 2. Prepare storage and track needed x-range
+        annotations_args = []
+        min_x_needed = float('inf')
+        max_x_needed = float('-inf')
+        xmin_plot_initial, xmax_plot_initial = axs[1].get_xlim()  # Limits after bars are drawn
+
+        # Include bar ends in initial range assessment
+        all_bar_ends = [b for b in mean_errors_1 + mean_errors_2 if b is not None and not np.isnan(b)]
+        min_bar_end = min(all_bar_ends) if all_bar_ends else xmin_plot_initial
+        max_bar_end = max(all_bar_ends) if all_bar_ends else xmax_plot_initial
+        min_x_needed = min(min_x_needed, min_bar_end)
+        max_x_needed = max(max_x_needed, max_bar_end)
+
+        # 3. Determine annotation positions adaptively
+        for i, count in enumerate(sample_counts):
+            if count > 0 and i < len(interval_centers):  # Ensure index valid for interval_centers
+                bar1_end = mean_errors_1[i]
+                bar2_end = mean_errors_2[i]
+                abs_bias1 = abs(bar1_end)
+                abs_bias2 = abs(bar2_end)
+                target_bar_end = bar1_end if abs_bias1 >= abs_bias2 else bar2_end
+                is_positive_bar = target_bar_end >= 0
+
+                label_text = f'n={count}'
+                plot_width = xmax_plot_initial - xmin_plot_initial
+                if plot_width == 0: plot_width = 1
+                offset = plot_width * 0.015  # Offset for outside placement
+                inner_offset = plot_width * 0.01  # Offset for inside placement
+
+                # Calculate ideal position (outside)
+                ideal_x_pos = target_bar_end + offset if is_positive_bar else target_bar_end - offset
+                ideal_ha = 'left' if is_positive_bar else 'right'
+
+                # Determine final position
+                final_x_pos = ideal_x_pos
+                final_ha = ideal_ha
+                text_color = 'dimgray'
+
+                # Check boundaries and adjust if needed
+                if is_positive_bar and ideal_x_pos > xmax_plot_initial:
+                    final_x_pos = target_bar_end - inner_offset
+                    final_ha = 'right'
+                    text_color = 'white'
+                elif not is_positive_bar and ideal_x_pos < xmin_plot_initial:
+                    final_x_pos = target_bar_end + inner_offset
+                    final_ha = 'left'
+                    text_color = 'white'
+
+                # Store args
+                annotations_args.append({
+                    'text': label_text,
+                    'xy': (final_x_pos, interval_centers[i]),
+                    'ha': final_ha, 'va': 'center',
+                    'fontsize': 8, 'color': text_color,
+                    'clip_on': True
+                })
+                # Update needed range
+                min_x_needed = min(min_x_needed, final_x_pos)
+                max_x_needed = max(max_x_needed, final_x_pos)
+
+        # 4. Add all annotations
+        for args in annotations_args:
+            axs[1].annotate(**args)
+
+        # 5. Adjust final X-axis limits with padding
+        x_range_needed = max_x_needed - min_x_needed
+        if x_range_needed <= 0: x_range_needed = abs(max_x_needed) * 0.1 + 1  # Handle zero/small range
+        padding = x_range_needed * 0.05  # 5% padding
+
+        final_xmin = min_x_needed - padding
+        final_xmax = max_x_needed + padding
+        axs[1].set_xlim(final_xmin, final_xmax)
+
+        # --- 添加偏差图的说明文本 ---
+        axs[1].text(0.98, -0.08, "n=sample size in true score interval", transform=axs[1].transAxes,
+                    ha='right', va='top', fontsize=9, color='dimgray')
+
+        # --- 添加整体图表标题 ---
+        fig.suptitle('Algorithm Performance Comparison: Score Distribution & Prediction Bias', fontsize=16, y=0.99)
+
+        # --- 添加共享的水平参考线 ---
+        for boundary in intervals:
+            # Use slightly different alpha/style for less visual clutter if desired
+            axs[0].axhline(y=boundary, color='grey', linestyle=':', linewidth=0.8, alpha=0.6)
+            axs[1].axhline(y=boundary, color='grey', linestyle=':', linewidth=0.8, alpha=0.6)
+
+        # --- 调整布局并显示 ---
+        plt.tight_layout(rect=[0, 0.03, 1, 0.96])  # Adjust rect for titles/labels
         plt.show()
-        
-        # 额外创建一个图表展示预测准确度随真实值变化的趋势，同样增加图表大小
-        plt.figure(figsize=(16, 10))
-        
-        # 按真实值大小排序
-        sorted_indices = np.argsort(data_true)
-        sorted_true = data_true[sorted_indices]
-        sorted_pred1 = data_1[sorted_indices]
-        sorted_pred2 = data_2[sorted_indices]
-        
-        # 计算移动平均以平滑曲线
-        window_size = min(50, len(sorted_true) // 10)  # 动态调整窗口大小
-        if window_size < 1:
-            window_size = 1
-            
-        def moving_average(data, window_size):
-            return np.convolve(data, np.ones(window_size)/window_size, mode='valid')
-        
-        if len(sorted_true) > window_size:
-            ma_true = moving_average(sorted_true, window_size)
-            ma_pred1 = moving_average(sorted_pred1, window_size)
-            ma_pred2 = moving_average(sorted_pred2, window_size)
-            
-            plt.plot(ma_true, label='Ground Truth', color='black', linewidth=2)
-            plt.plot(ma_pred1, label='Algorithm 1', color='blue', alpha=0.8)
-            plt.plot(ma_pred2, label='Algorithm 2', color='green', alpha=0.8)
-            plt.title('Prediction vs Ground Truth (Moving Average, Sorted by Ground Truth)', fontsize=16)
-            plt.xlabel('Sample Index (Sorted by Ground Truth)', fontsize=14)
-            plt.ylabel('Score', fontsize=14)
-            plt.legend(fontsize=12)
-            plt.xticks(fontsize=12)
-            plt.yticks(fontsize=12)
-            plt.grid(True, linestyle='--', alpha=0.7)
-            plt.tight_layout(pad=3.0)
-            plt.savefig('prediction_trend.png', dpi=300, bbox_inches='tight')
-            plt.show()
+  
 
     print("测试完成！")
 
@@ -446,10 +539,7 @@ def recursive(A,B):
     score,strategy=recursive_StrategyAndScore(A, B)
     return score,strategy
 
-# 这个预测不了策略
-# def transformer_score(A,B):
-#     predicted_score=transformer_scoreonly(A, B, "../trained/seq2seq_model.pth")
-#     return predicted_score
+
 
 if __name__ == "__main__":
 

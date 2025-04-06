@@ -11,58 +11,13 @@ from AI_algorithm.tool.tool import calculate_score_by_strategy, simulate_inserti
 #添加预处理缓存
 _preprocess_cache = {}
 
-def score_based_loss_cuda(order_logits, pos_preds, A_tensor, B_tensor):
-    """
-    基于得分的损失函数 - CUDA加速版本，使用可微分近似替代argmax
-    
-    参数:
-    - order_logits: [batch_size, num_b, num_b] 顺序预测
-    - pos_preds: [batch_size, num_b] 位置预测
-    - A_tensor: [batch_size, num_a] A序列，已转到GPU
-    - B_tensor: [batch_size, num_b] B序列，已转到GPU
-    - target_scores: [batch_size] 目标得分
-    """
-    batch_size = order_logits.size(0)
-    
-    # 使用softmax获取顺序概率
-    order_probs = F.softmax(order_logits, dim=2)
-    
-    # 使用可微分的方式近似argmax
-    # 方法1: 使用Gumbel-Softmax作为argmax的可微分近似
-    temperature = 0.5  # 控制分布的锐度，越小越接近argmax
-    gumbel_noise = -torch.log(-torch.log(torch.rand_like(order_probs) + 1e-10) + 1e-10)
-    gumbel_logits = (order_logits + gumbel_noise) / temperature
-    soft_indices = F.softmax(gumbel_logits, dim=2)
-    
-    # 位置预测处理 (裁剪到合理范围)
-    num_a = A_tensor.size(1)
-    num_b = B_tensor.size(1)
-    
-    # 创建位置范围上限张量 [num_b]
-    pos_range = torch.arange(num_b, device=order_logits.device).float() + num_a
-    # 将位置预测裁剪到合理范围 [batch_size, num_b]
-    clipped_positions = torch.min(torch.max(pos_preds, torch.zeros_like(pos_preds)), pos_range)
-    
-    # 构建可微分的损失函数
-    # 使用soft_indices代替原来的pred_order_probs
-    # 计算每个位置的概率加权和
-    weighted_probs = torch.sum(order_probs * soft_indices, dim=2)
-    
-    # 使用MSE替代直接计算score (作为近似)
-    # 1. 顺序损失 - 监督信号
-    order_mse = F.mse_loss(weighted_probs, torch.ones_like(weighted_probs))
-    
-    # 2. 位置损失 - 监督信号
-    pos_mse = F.mse_loss(clipped_positions, pos_preds)
-    
-    return (order_mse + pos_mse).mean()
+
 
 jsonfilename="json/data_raw.json" # 请确保你的 JSON 文件路径正确
-GPUDEBUG_MODE = True
 
-def conditional_print(*args, **kwargs):
-    if GPUDEBUG_MODE:
-        print(*args, **kwargs)
+
+
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 if device.type == "cuda":
@@ -321,8 +276,9 @@ def lr_warmup(epoch, lr_max, warmup_epochs):
         return lr_max
 
 # 修改训练函数中的模型初始化部分
-def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/transformer_move_predictor_6x3.pth",
-                num_a=6, num_b=3, warmup_epochs=50, lr_max=0.0001, lr_min=0.0000005):
+# epochs=1000  warmup_epochs=50 是对应10万个样本的
+def train_model(train_data, epochs=300, batch_size=64, model_path="./trained/transformer_move_predictor_6x3.pth",
+                num_a=6, num_b=3, warmup_epochs=10, lr_max=0.0001, lr_min=0.0000005):
     """
     训练 Transformer 模型 (针对 A=6, B=3)
     允许手动终止训练 (`Ctrl+C`) 并保存当前进度
@@ -342,8 +298,8 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
                                      dim_feedforward=dim_feedforward, dropout=dropout,
                                      num_a=num_a, num_b=num_b).to(device)
 
-    conditional_print("模型参数量:", sum(p.numel() for p in model.parameters() if p.requires_grad))
-    conditional_print("模型是否在GPU上:", next(model.parameters()).is_cuda)
+    print("模型参数量:", sum(p.numel() for p in model.parameters() if p.requires_grad))
+    print("模型是否在GPU上:", next(model.parameters()).is_cuda)
 
     optimizer = optim.AdamW(model.parameters(), lr=lr_max, weight_decay=0.01)
 
@@ -404,10 +360,8 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
                 order_loss = order_criterion(order_logits, order_targets)
                 pos_loss = pos_criterion(pos_preds, pos_targets)
 
-                # 计算基于得分的损失 (CUDA加速版本)
-                score_loss = score_based_loss_cuda(order_logits, pos_preds, torch.tensor([sample["A"] for sample in batch], device=device), torch.tensor([sample["B"] for sample in batch], device=device), torch.tensor([sample.get("max_score", 60) for sample in batch], device=device))
 
-                loss = order_loss + pos_loss + score_loss
+                loss = order_loss + pos_loss
 
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -650,7 +604,8 @@ def train():
 
 
     # 调用 train_model 时传递固定长度，并使用新的模型路径
-    train_model(train_data, epochs=1000, batch_size=2048,
+    # epochs=1000  warmup_epochs=50 是对应10万个样本的
+    train_model(train_data, epochs=500, batch_size=2048,
                 model_path="./trained/transformer_move_predictor_6x3.pth", # 新路径名
                 num_a=fixed_num_a, num_b=fixed_num_b) # 传递 6 和 3
 

@@ -12,7 +12,7 @@ def has_duplicates(lst):
 
 
 h=0
-def generate_training_data(num_samples=150000):
+def generate_training_data(num_samples=15000):
     dataset = []
     global h
     for i in range(num_samples):
