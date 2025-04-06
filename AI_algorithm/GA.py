@@ -8,6 +8,7 @@ import json
 import os
 import torch
 
+from AI_algorithm.tool.tool import calculate_future_score, simulate_insertion_tool
 
 
 # ---------------------------
@@ -60,185 +61,6 @@ def deal_cards(json_file="AI_algorithm/json/transformer_error_cases.json", seed=
     return A, B
 
 
-# 洗牌并发牌，从JSON文件中读取A和B
-# def deal_cards(json_file="AI_algorithm/json/transformer_error_cases.json"):
-#     # 检查文件是否存在
-#     if not os.path.exists(json_file):
-#         # 如果文件不存在，尝试相对路径
-#         json_file = "json/transformer_error_cases.json"
-#         if not os.path.exists(json_file):
-#
-#             raise FileNotFoundError(f"文件未找到: {json_file}")
-#
-#     try:
-#         # 从JSON文件读取数据
-#         with open(json_file, 'r') as f:
-#             cases = json.load(f)
-#
-#         # 随机选择一个案例
-#         case = random.choice(cases)
-#
-#         # 提取A和B
-#         A = case['A']
-#         B = case['B']
-#
-#         print(f"从JSON加载案例: A={A}, B={B}")
-#         return A, B
-#
-#     except Exception as e:
-#
-#         raise Exception(f"读取JSON文件时出错: {e}")
-
-
-def get_best_insertion_score(A, card):
-    max_score = -float('inf')
-    best_pos = -1
-
-    # 遍历所有可能的插入位置 (从位置0开始)
-    for pos in range(0, len(A) + 1):
-        score, _, _, _, _ = simulate_insertion(A, card, pos)
-
-        # 找到最大的得分
-        if score > max_score:
-            max_score = score
-            best_pos = pos
-
-    return best_pos, max_score
-
-
-# 像玩家一样做决策
-def calculate_future_score(A, remaining_B):
-
-
-    future_score = 0  # 初始化未来得分
-    if len(remaining_B) == 0:
-        return future_score  # 如果没有剩余的B玩家的牌，返回0
-    if not set(A) & set(remaining_B):  # 如果 A 和 B 没有任何重复元素
-        return future_score
-    # 复制A玩家的牌以便模拟
-    simulated_B = remaining_B.copy()
-
-    if len(simulated_B) == 1:
-        card_of_B = simulated_B[0]  # 获取最后一张B玩家的牌
-        matched = card_of_B  in A  # 判断是否能匹配
-        if not matched:
-            return future_score  # 如果不能匹配，返回0
-        else:
-            _, score = get_best_insertion_score(A, card_of_B)
-            return score
-
-
-
-    elif len(remaining_B) == 2:
-        card1, card2 = remaining_B  # 获取最后两张B玩家的牌
-
-        matched1 = card1  in A  # 判断第一张卡是否可以匹配
-        matched2 = card2  in A  # 判断第二张卡是否可以匹配
-
-        if card1==card2 and (not (card1 in A)):
-            return card1+card2+sum(A)  # 如果两张卡都一样， 一张插最前面一张插最后面
-
-        if not matched1 and (not matched2):
-            return future_score  # 如果两张卡都不能匹配，返回0
-
-        if matched1 and not matched2:  # 第一张可以匹配且第二张不能匹配
-
-            _, score1 = get_best_insertion_score(A, card1)
-            return score1 + card2  # 第二张可以插到第一张的匹配里
-
-        if matched2 and not matched1: # 第二张可以匹配且第一张不能匹配
-            _, score2 = get_best_insertion_score(A, card2)
-            return score2 + card1  # 第一张可以插到第二张的匹配里
-
-        # 如果两张卡都能匹配，分次插入，并返回较大得分
-
-        # 先插入card1计算得分
-        bestpos, score_card1 = get_best_insertion_score(A, card1)
-        # 插入card1后的A变成了什么
-
-        _, _, _, _, newA = simulate_insertion(A, card1, bestpos)
-        # 把card2插入新的A
-        _, score_card2 = get_best_insertion_score(newA, card2)
-
-        # 计算它们的和
-
-        best_score1 = score_card1 + score_card2
-
-        # 先插入card2计算得分
-        bestpos, score_card2 = get_best_insertion_score(A, card2)
-        # 插入card2后的A变成了什么
-        _, _, _, _, newA = simulate_insertion(A, card2, bestpos)
-        # 把card1插入新的A
-        _, score_card1 = get_best_insertion_score(newA, card1)
-
-        # 计算它们的和
-
-        best_score2 = score_card1 + score_card2
-
-        return max(best_score2, best_score1)
-
-    return future_score  # 默认返回0
-
-
-def simulate_insertion(A, x, pos):
-    candidate_A = A.copy()  # 复制A玩家的牌以便模拟插入
-
-    # 处理空列表的情况
-    if len(candidate_A) == 0:
-        candidate_A.append(x)  # 如果A为空，则直接插入x
-        return 0, 0, len(candidate_A), 0, candidate_A  # 返回相关信息
-
-    # # 确保不在第一个元素之前插入
-    # if pos == 0:
-    #      raise ValueError("pos 不能为 0")  # 抛出异常，不允许在第一个位置之前插入
-
-    # 插入x到pos位置
-    candidate_A.insert(pos, x)  # 在指定位置插入x
-
-    # 向左和向右搜索匹配的元素
-    left_idx, right_idx = None, None  # 初始化左右索引为None
-
-    # 向左搜索
-    for i in range(pos - 1, -1, -1):  # 从pos-1开始向前搜索
-        if candidate_A[i] == x:  # 如果找到匹配的元素
-            left_idx = i  # 记录左侧匹配元素的位置
-            break  # 结束循环
-
-    # 向右搜索
-    for j in range(pos + 1, len(candidate_A)):  # 从pos+1开始向后搜索
-        if candidate_A[j] == x:  # 如果找到匹配的元素
-            right_idx = j  # 记录右侧匹配元素的位置
-            break  # 结束循环
-
-    # 如果没有匹配元素
-    if left_idx is None and right_idx is None:
-        return 0, 0, len(candidate_A), 0, candidate_A  # 返回相关信息
-
-    # 计算距离和区间的选择
-    left_distance = pos - left_idx if left_idx is not None else float('inf')  # 计算左侧距离
-    right_distance = right_idx - pos if right_idx is not None else float('inf')  # 计算右侧距离
-
-    if left_distance < right_distance:
-        start, end = min(pos, left_idx), max(pos, left_idx)  # 选择左侧匹配元素作为区间起点和终点
-    elif right_distance < left_distance:
-        start, end = min(pos, right_idx), max(pos, right_idx)  # 选择右侧匹配元素作为区间起点和终点
-    else:
-        left_sum = sum(candidate_A[min(pos, left_idx):max(pos, left_idx) + 1])  # 计算左侧区间的和
-        right_sum = sum(candidate_A[min(pos, right_idx):max(pos, right_idx) + 1])  # 计算右侧区间的和
-        if left_sum >= right_sum:
-            start, end = min(pos, left_idx), max(pos, left_idx)  # 选择左侧区间
-        else:
-            start, end = min(pos, right_idx), max(pos, right_idx)  # 选择右侧区间
-
-    # 计算区间和
-    removal_interval = candidate_A[start:end + 1]  # 获取要移除的区间
-    score = sum(removal_interval)  # 计算区间和
-
-    # 移除区间内的所有元素
-    new_A = candidate_A[:start] + candidate_A[end + 1:]  # 生成新的牌堆
-
-    return score, len(removal_interval), len(new_A), 1, new_A  # 返回相关信息
-
 
 
 # 评估基因组的适应度  还是贪心算法  但是至少不是穷举
@@ -288,7 +110,7 @@ def GA_Strategy(genome, A, B):
 
             # 收集所有位置的特征
             for pos in range(len(A_copy) + 1):
-                score, removal_length, new_length, match_found, new_A = simulate_insertion(A_copy, card, pos)
+                score, removal_length, new_length, match_found, new_A = simulate_insertion_tool(A_copy, card, pos)
                 future_score = calculate_future_score(new_A, remaining_B)
 
                 features = [
@@ -827,27 +649,6 @@ def analyze_evolution_methods(best_fitness_history, method_history):
         print(f"{method}方法: 平均适应度={avg_fitness:.2f}, 最大适应度={max_fitness:.2f}, 改进率={improve_rate:.2%}")
 
 #
-# #
-# def load_best_genome(filename="../trained/best_genome.pkl"):
-#     try:
-#         # 尝试打开并加载文件
-#         with open(filename, 'rb') as file:
-#             genome = pickle.load(file)
-#         # print(f"genome loaded from {filename}")
-#         return genome
-#     except FileNotFoundError:
-#         # 文件不存在时的处理
-#         print(f"Error: The file '{filename}' was not found. Please check the file path.")
-#     except PermissionError:
-#         # 权限不足时的处理
-#         print(f"Error: Permission denied when accessing the file '{filename}'.")
-#     except EOFError:
-#         # 文件为空或损坏时的处理
-#         print(f"Error: The file '{filename}' is empty or corrupted.")
-#     except Exception as e:
-#         # 捕获其他未知异常
-#         print(f"An unexpected error occurred while loading the file '{filename}': {e}")
-
 
 
 if __name__ == "__main__":

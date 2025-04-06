@@ -17,7 +17,7 @@ from AI_algorithm.Trans import TransformerMovePredictor, Transformer_predict
 from AI_algorithm.Trans_assist import TransformerMovePredictor_assist, Transformer_predict_assist
 from AI_algorithm.brute_force import recursive_StrategyAndScore
 from AI_algorithm.server import load_model_from_memory
-from AI_algorithm.tool.tool import load_best_genome, deal_cards_tool, simulate_insertion_tool, complete_best_moves
+from AI_algorithm.tool.tool import load_best_genome, deal_cards_tool, simulate_insertion_tool
 
 
 
@@ -425,6 +425,8 @@ def Transformer(A, B):
     move2=GA_Strategy(genome,A, B)
 
     score2=strategy_TrueScore(A,B,move2)
+    if score1<20:
+        print(f"异常值出现 {A},{B} {move1} ")
 
     if(score1<score2 ):
         i+=1

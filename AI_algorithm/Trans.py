@@ -1,70 +1,19 @@
-import time
+
 import json
 import math
 import torch
 import torch.nn as nn
-import torch.optim as optim
-import numpy as np
 import torch.nn.functional as F
 
-from AI_algorithm.tool.tool import calculate_score_by_strategy
-# 添加全局缓存
 
+from AI_algorithm.tool.tool import calculate_score_by_strategy, simulate_insertion_tool, calculate_future_score
 
-# from AI_algorithm.tool.tool import calculate_score_by_strategy
-# 为了代码能独立运行，这里提供一个模拟的函数
+#添加预处理缓存
+_preprocess_cache = {}
 
-def score_based_loss(order_logits, pos_preds, A_list, B_list, target_scores):
+def score_based_loss_cuda(order_logits, pos_preds, A_tensor, B_tensor):
     """
-    基于真实得分计算的损失函数
-
-    参数:
-    - order_logits: 形状为 [batch_size, num_b, num_b] 的顺序预测输出
-    - pos_preds: 形状为 [batch_size, num_b] 的位置预测输出
-    - A_list: 包含每个样本A序列的列表
-    - B_list: 包含每个样本B序列的列表
-    - target_scores: 每个样本的目标得分
-
-    返回:
-    - 基于得分的损失张量
-    """
-    batch_size = order_logits.size(0)
-    batch_losses = []
-    
-    for i in range(batch_size):
-        A = A_list[i]
-        B = B_list[i]
-        target_score = float(target_scores[i])  # 确保是浮点数
-        
-        order_logits_sample = order_logits[i].unsqueeze(0).detach()
-        pred_order = sample_order(order_logits_sample).squeeze(0).cpu().detach().numpy()
-        
-        pos_preds_sample = pos_preds[i].cpu().detach().numpy()
-        pred_moves = [int(np.clip(p, 0, len(A) + k)) for k, p in enumerate(pos_preds_sample)]
-        
-        pred_strategy = [[int(pred_order[j]), pred_moves[j]] for j in range(len(pred_order))]
-        
-        try:
-            pred_score = float(calculate_score_by_strategy(A.copy(), B, pred_strategy))  # 确保是浮点数
-            sample_loss = float((pred_score - target_score) ** 2)  # 确保是浮点数
-        except Exception as e:
-            print(f"计算得分时出错: {e}")
-            sample_loss = 100.0
-            
-        batch_losses.append(sample_loss)
-    
-    # 直接使用FloatTensor，并且创建一个新的可导的连接点
-    if batch_losses:
-        loss_tensor = torch.FloatTensor(batch_losses).to(order_logits.device)
-        # 创建一个新的计算节点以连接梯度
-        return loss_tensor.mean() * (order_logits.sum() / order_logits.sum().detach())
-    else:
-        # 确保返回的零也是连接到计算图的
-        return 0.0 * (order_logits.sum() / order_logits.sum().detach())
-
-def score_based_loss_cuda(order_logits, pos_preds, A_tensor, B_tensor, target_scores):
-    """
-    基于得分的损失函数 - CUDA加速版本
+    基于得分的损失函数 - CUDA加速版本，使用可微分近似替代argmax
     
     参数:
     - order_logits: [batch_size, num_b, num_b] 顺序预测
@@ -75,12 +24,17 @@ def score_based_loss_cuda(order_logits, pos_preds, A_tensor, B_tensor, target_sc
     """
     batch_size = order_logits.size(0)
     
-    # 使用softmax+argmax获取最佳顺序预测 (保留梯度连接)
+    # 使用softmax获取顺序概率
     order_probs = F.softmax(order_logits, dim=2)
-    _, pred_indices = torch.max(order_probs, dim=2)
+    
+    # 使用可微分的方式近似argmax
+    # 方法1: 使用Gumbel-Softmax作为argmax的可微分近似
+    temperature = 0.5  # 控制分布的锐度，越小越接近argmax
+    gumbel_noise = -torch.log(-torch.log(torch.rand_like(order_probs) + 1e-10) + 1e-10)
+    gumbel_logits = (order_logits + gumbel_noise) / temperature
+    soft_indices = F.softmax(gumbel_logits, dim=2)
     
     # 位置预测处理 (裁剪到合理范围)
-    # 假设每个样本的A长度都是num_a
     num_a = A_tensor.size(1)
     num_b = B_tensor.size(1)
     
@@ -90,12 +44,13 @@ def score_based_loss_cuda(order_logits, pos_preds, A_tensor, B_tensor, target_sc
     clipped_positions = torch.min(torch.max(pos_preds, torch.zeros_like(pos_preds)), pos_range)
     
     # 构建可微分的损失函数
-    # 使用预测顺序和位置的概率加权平均
-    pred_order_probs = torch.gather(order_probs, 2, pred_indices.unsqueeze(-1)).squeeze(-1)
+    # 使用soft_indices代替原来的pred_order_probs
+    # 计算每个位置的概率加权和
+    weighted_probs = torch.sum(order_probs * soft_indices, dim=2)
     
     # 使用MSE替代直接计算score (作为近似)
     # 1. 顺序损失 - 监督信号
-    order_mse = F.mse_loss(pred_order_probs, torch.ones_like(pred_order_probs))
+    order_mse = F.mse_loss(weighted_probs, torch.ones_like(weighted_probs))
     
     # 2. 位置损失 - 监督信号
     pos_mse = F.mse_loss(clipped_positions, pos_preds)
@@ -238,47 +193,55 @@ def sample_order(logits, temperature=1.0):
 
 # 修改默认参数以反映新的固定长度
 # 修改数据预处理函数，添加更多特征
+# 修改数据预处理函数，添加更多特征
 def prepare_data_transformer(sample: dict, num_a=6, num_b=3):
     """
     数据预处理：构建输入序列和目标输出，添加修改后的特征工程。
     """
+    # 使用样本的唯一标识作为缓存键
+    cache_key = (tuple(sample["A"]), tuple(sample["B"]), tuple(tuple(move) for move in sample["best_moves"]))
+
+    # 检查缓存中是否已存在处理结果
+    if cache_key in _preprocess_cache:
+        return _preprocess_cache[cache_key]
+
     A = sample["A"]
     B = sample["B"]
     best_moves = sample["best_moves"]
 
     if len(A) != num_a or len(B) != num_b:
-         print(f"Warning: Skipping sample with A={A}, B={B} due to unexpected length (expected A:{num_a}, B:{num_b}).")
-         return None, None, None
+        print(f"Warning: Skipping sample with A={A}, B={B} due to unexpected length (expected A:{num_a}, B:{num_b}).")
+        return None, None, None
 
     # 新增特征计算
     A_sum = sum(A)  # A序列的和
     B_sum = sum(B)  # B序列的和
-    
+
     # 计算B序列中重复的元素数
     B_counter = {}
     for val in B:
         B_counter[val] = B_counter.get(val, 0) + 1
     B_duplicates = sum(count - 1 for count in B_counter.values())  # 重复的元素数
-    
+
     # 交集特征
     intersection = set(A) & set(B)
     intersection_size = len(intersection)
-    
+
     # 位置特征
     positions_in_A = {}
     for i, a_val in enumerate(A):
         positions_in_A[a_val] = i
-    
+
     # 创建增强的输入序列
     enhanced_sequence = []
-    
+
     # 处理A序列
     for i, val in enumerate(A):
         is_in_intersection = 1.0 if val in intersection else 0.0
         relative_position = i / num_a
         relative_size = val / A_sum if A_sum != 0 else 0  # 使用与总和的比例代替相对大小
         intersection_ratio = intersection_size / num_b
-        
+
         enhanced_sequence.append([
             val,  # 原始值
             val / A_sum if A_sum != 0 else 0,  # 值占A总和的比例
@@ -287,23 +250,32 @@ def prepare_data_transformer(sample: dict, num_a=6, num_b=3):
             relative_size,  # 相对大小（占总和的比例）
             intersection_ratio  # 交集大小比例
         ])
-    
+
     # 处理B序列
     for i, val in enumerate(B):
         is_in_A = 1.0 if val in A else 0.0
         position_in_A = positions_in_A.get(val, -1)
         relative_position_in_A = position_in_A / num_a if position_in_A >= 0 else -0.1
-        relative_size = val / B_sum if B_sum != 0 else 0  # 使用与总和的比例
-        
+        # relative_size = val / B_sum if B_sum != 0 else 0  # 使用与总和的比例
+
+        # 计算未来得分特征
+        # 假设当前B[i]已经被处理，计算剩余B的未来得分
+        remaining_B = B[i + 1:] if i < len(B) - 1 else []
+        future_score = calculate_future_score(A, remaining_B)
+        future_score_ratio = future_score / (sum(A) + sum(B)) if (sum(A) + sum(B)) > 0 else 0
+
         enhanced_sequence.append([
             val,  # 原始值
-            val / B_sum if B_sum != 0 else 0,  # 值占B总和的比例
+            # val / B_sum if B_sum != 0 else 0,  # 值占B总和的比例
+            future_score_ratio,  # 新增：未来得分比例
+
             is_in_A,  # 是否在A中
             relative_position_in_A,  # 在A中的相对位置（如果存在）
             B_duplicates / num_b,  # B中重复元素的比例
+
             intersection_ratio  # 交集大小比例
         ])
-    
+
     # 将序列转换为numpy数组
     input_sequence = np.array(enhanced_sequence, dtype=np.float32)
 
@@ -314,13 +286,13 @@ def prepare_data_transformer(sample: dict, num_a=6, num_b=3):
         print(f"Warning: Skipping sample with invalid order target in best_moves: {order_target}")
         return None, None, None
 
-    return input_sequence, order_target, pos_target
+    # 将结果存入缓存
+    result = (input_sequence, order_target, pos_target)
+    _preprocess_cache[cache_key] = result
+
+    return result
 
 import signal
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import numpy as np
 
 # 定义全局变量
 stop_training = False
@@ -451,27 +423,72 @@ def train_model(train_data, epochs=1000, batch_size=64, model_path="./trained/tr
             avg_loss = total_loss / batch_count if batch_count > 0 else total_loss
             print(f"Epoch {epoch + 1}/{epochs}, Loss: {avg_loss:.4f}, LR: {new_lr:.6f}")
 
+
+
     except KeyboardInterrupt:
+
         print("\n训练手动中断，正在保存当前模型...")
 
+    except Exception as e:
+
+        print(f"\n训练过程中发生错误: {str(e)}")
+
+        import traceback
+
+        traceback.print_exc()
+
     finally:
+
         # 确保无论发生什么情况，模型都会被保存
-        torch.save(model.state_dict(), model_path)
-        print(f"Transformer 模型已保存至 {model_path}")
+
+        try:
+
+            torch.save(model.state_dict(), model_path)
+
+            print(f"Transformer 模型已保存至 {model_path}")
+
+        except Exception as save_error:
+
+            print(f"保存模型时发生错误: {str(save_error)}")
+
+            # 尝试保存到备用位置
+
+            backup_path = model_path.replace(".pth", "_backup.pth")
+
+            try:
+
+                torch.save(model.state_dict(), backup_path)
+
+                print(f"模型已保存到备用位置: {backup_path}")
+
+            except:
+
+                print("无法保存模型，请检查磁盘空间和权限")
 
     return model
 
 # 修改 DNNpredict 以使用新的固定长度
 # 修改预测函数，使用相同的特征工程
+# 添加预测缓存
+_prediction_cache = {}
+
+
 def Transformer_predict(A, B, model, num_a=6, num_b=3):
     """
     使用训练好的 Transformer 模型进行预测 (针对 A=6, B=3)。
     """
     try:
+        # 缓存键
+        cache_key = (tuple(A), tuple(B), id(model))
+
+        # 检查缓存
+        if cache_key in _prediction_cache:
+            return _prediction_cache[cache_key]
+
         # 特殊情况处理可以保留，但现在 A 的长度是 6
         if not set(A) & set(B) and len(B) == len(set(B)):
-             print("快速路径：A、B无交集且B无重复，返回默认策略")
-             return [[0, 0], [1, 0], [2, 0]], 0
+            print("快速路径：A、B无交集且B无重复，返回默认策略")
+            return [[0, 0], [1, 0], [2, 0]], 0
 
         if not isinstance(model, TransformerMovePredictor):
              raise ValueError(f"需要 TransformerMovePredictor 实例, 但得到 {type(model)}")
@@ -486,32 +503,32 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
         # 1. 计算序列和
         A_sum = sum(A)
         B_sum = sum(B)
-        
+
         # 2. 计算B序列中重复的元素数
         B_counter = {}
         for val in B:
             B_counter[val] = B_counter.get(val, 0) + 1
         B_duplicates = sum(count - 1 for count in B_counter.values())
-        
+
         # 3. 交集特征
         intersection = set(A) & set(B)
         intersection_size = len(intersection)
-        
+
         # 4. 位置特征
         positions_in_A = {}
         for i, a_val in enumerate(A):
             positions_in_A[a_val] = i
-        
+
         # 创建增强的输入序列
         enhanced_sequence = []
-        
+
         # 处理A序列
         for i, val in enumerate(A):
             is_in_intersection = 1.0 if val in intersection else 0.0
             relative_position = i / num_a
             relative_size = val / A_sum if A_sum != 0 else 0
             intersection_ratio = intersection_size / num_b
-            
+
             enhanced_sequence.append([
                 val,  # 原始值
                 val / A_sum if A_sum != 0 else 0,  # 值占A总和的比例
@@ -520,17 +537,21 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
                 relative_size,  # 相对大小（占总和的比例）
                 intersection_ratio  # 交集大小比例
             ])
-        
+
         # 处理B序列
         for i, val in enumerate(B):
             is_in_A = 1.0 if val in A else 0.0
             position_in_A = positions_in_A.get(val, -1)
             relative_position_in_A = position_in_A / num_a if position_in_A >= 0 else -0.1
-            relative_size = val / B_sum if B_sum != 0 else 0
-            
+            # relative_size = val / B_sum if B_sum != 0 else 0
+            # 计算未来得分特征
+            remaining_B = B[i + 1:] if i < len(B) - 1 else []
+            future_score = calculate_future_score(A, remaining_B)
+            future_score_ratio = future_score / (sum(A) + sum(B)) if (sum(A) + sum(B)) > 0 else 0
             enhanced_sequence.append([
                 val,  # 原始值
-                val / B_sum if B_sum != 0 else 0,  # 值占B总和的比例
+                # val / B_sum if B_sum != 0 else 0,  # 值占B总和的比例
+                future_score_ratio,  # 新增：未来得分比例
                 is_in_A,  # 是否在A中
                 relative_position_in_A,  # 在A中的相对位置（如果存在）
                 B_duplicates / num_b,  # B中重复元素的比例
@@ -558,7 +579,10 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
 
         # print(f"Transformer 预测 (6x3): A={A}, B={B} -> 策略={best_moves}, 预测得分={pred_score}")
 
-        return best_moves, pred_score
+        result = (best_moves, pred_score)
+        _prediction_cache[cache_key] = result
+
+        return result
     except Exception as e:
         print(f"使用 Transformer 预测时出错 (6x3): A={A}, B={B}")
         print(f"错误信息: {str(e)}")

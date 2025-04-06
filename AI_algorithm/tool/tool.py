@@ -116,30 +116,106 @@ def complete_best_moves(best_moves):
         first_element = missing_first_elements.pop(0)
         best_moves.append([first_element, 0])
     return best_moves
-def numsummery(results):
-    mean_value = np.mean(results)
-    median_value = np.median(results)
-    std_dev = np.std(results)
-    min_value = np.min(results)
-    max_value = np.max(results)
-    q1, q3 = np.percentile(results, [25, 75])  # 计算第25百分位数和第75百分位数
-    cv = std_dev / mean_value if mean_value != 0 else float('inf')
-    print(f"均值: {mean_value}")
-    print(f"中位数: {median_value}")
-    print(f"标准差: {std_dev}")
-    print(f"最小值: {min_value}")
-    print(f"最大值: {max_value}")
-    print(f"Q1: {q1}")
-    print(f"Q3: {q3}")
-    print(f"CV: {cv:.2f}%")
 
-def modsummery(model, num):
-    results = []
-    for _ in range(num):
-        A, B = deal_cards_tool()
-        # 裁剪掉负数的情况，transformer有可能出现0
-        results.append(max(0, model(A, B)))
-    numsummery(results)
+
+# 像玩家一样做决策
+# 添加未来得分计算缓存
+_future_score_cache = {}
+
+
+def calculate_future_score(A, remaining_B):
+    # 缓存键
+    cache_key = (tuple(A), tuple(remaining_B))
+
+    # 检查缓存
+    if cache_key in _future_score_cache:
+        return _future_score_cache[cache_key]
+
+    future_score = 0  # 初始化未来得分
+    if len(remaining_B) == 0:
+        return future_score  # 如果没有剩余的B玩家的牌，返回0
+    if not set(A) & set(remaining_B):  # 如果 A 和 B 没有任何重复元素
+        return future_score
+    # 复制A玩家的牌以便模拟
+    simulated_B = remaining_B.copy()
+
+    if len(simulated_B) == 1:
+        card_of_B = simulated_B[0]  # 获取最后一张B玩家的牌
+        matched = card_of_B  in A  # 判断是否能匹配
+        if not matched:
+            return future_score  # 如果不能匹配，返回0
+        else:
+            _, score = get_best_insertion_score(A, card_of_B)
+            return score
+
+
+
+    elif len(remaining_B) == 2:
+        card1, card2 = remaining_B  # 获取最后两张B玩家的牌
+
+        matched1 = card1  in A  # 判断第一张卡是否可以匹配
+        matched2 = card2  in A  # 判断第二张卡是否可以匹配
+
+        if card1==card2 and (not (card1 in A)):
+            return card1+card2+sum(A)  # 如果两张卡都一样， 一张插最前面一张插最后面
+
+        if not matched1 and (not matched2):
+            return future_score  # 如果两张卡都不能匹配，返回0
+
+        if matched1 and not matched2:  # 第一张可以匹配且第二张不能匹配
+
+            _, score1 = get_best_insertion_score(A, card1)
+            return score1 + card2  # 第二张可以插到第一张的匹配里
+
+        if matched2 and not matched1: # 第二张可以匹配且第一张不能匹配
+            _, score2 = get_best_insertion_score(A, card2)
+            return score2 + card1  # 第一张可以插到第二张的匹配里
+
+        # 如果两张卡都能匹配，分次插入，并返回较大得分
+
+        # 先插入card1计算得分
+        bestpos, score_card1 = get_best_insertion_score(A, card1)
+        # 插入card1后的A变成了什么
+
+        _, _, _, _, newA = simulate_insertion_tool(A, card1, bestpos)
+        # 把card2插入新的A
+        _, score_card2 = get_best_insertion_score(newA, card2)
+
+        # 计算它们的和
+
+        best_score1 = score_card1 + score_card2
+
+        # 先插入card2计算得分
+        bestpos, score_card2 = get_best_insertion_score(A, card2)
+        # 插入card2后的A变成了什么
+        _, _, _, _, newA = simulate_insertion_tool(A, card2, bestpos)
+        # 把card1插入新的A
+        _, score_card1 = get_best_insertion_score(newA, card1)
+
+        # 计算它们的和
+
+        best_score2 = score_card1 + score_card2
+
+        return max(best_score2, best_score1)
+
+        # 缓存结果
+    _future_score_cache[cache_key] = future_score
+    return future_score
+def get_best_insertion_score(A, card):
+    max_score = -float('inf')
+    best_pos = -1
+
+    # 遍历所有可能的插入位置 (从位置0开始)
+    for pos in range(0, len(A) + 1):
+        score, _, _, _, _ = simulate_insertion_tool(A, card, pos)
+
+        # 找到最大的得分
+        if score > max_score:
+            max_score = score
+            best_pos = pos
+
+    return best_pos, max_score
+
 def calculate_score_by_strategy(A, B, strategy):
 
 
@@ -150,19 +226,19 @@ def calculate_score_by_strategy(A, B, strategy):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-if __name__ == '__main__':
-
-    A= [13, 8, 11, 4, 6, 7]
-    B= [13, 7, 10]
-    score1, _, _, _,A1  = simulate_insertion_tool(A, B[1], 1)
-    print(A1)
-    print(score1)
-    score2, _, _, _,A2  = simulate_insertion_tool(A1, B[2], 1)
-    print(A2)
-    print(score2)
-    score3, _, _, _,A3  = simulate_insertion_tool(A2, B[0], 3)
-    print(A3)
-    print(score3)
+# if __name__ == '__main__':
+#
+#     A= [13, 8, 11, 4, 6, 7]
+#     B= [13, 7, 10]
+#     score1, _, _, _,A1  = simulate_insertion_tool(A, B[1], 1)
+#     print(A1)
+#     print(score1)
+#     score2, _, _, _,A2  = simulate_insertion_tool(A1, B[2], 1)
+#     print(A2)
+#     print(score2)
+#     score3, _, _, _,A3  = simulate_insertion_tool(A2, B[0], 3)
+#     print(A3)
+#     print(score3)
 
 # 备用测试代码
 # def test_simulate_insertion():
