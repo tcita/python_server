@@ -226,6 +226,8 @@ def calculate_score_by_strategy(A, B, strategy):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
+
 # if __name__ == '__main__':
 #
 #     A= [13, 8, 11, 4, 6, 7]

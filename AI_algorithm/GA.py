@@ -426,9 +426,9 @@ def differential_evolution(population, fitnesses, pop_size, F=0.8, CR=0.5, num_r
 
 
 # 遗传算法过程
-def genetic_algorithm(pop_size=600, generations=60, num_rounds=300, elitism_ratio=0.1, tournament_size=3,
+def genetic_algorithm(pop_size=100, generations=60, num_rounds=100, elitism_ratio=0.1, tournament_size=3,
                       evolution_methods=['standard', 'island', 'de'],
-                      method_probs=[0.4, 0.3, 0.3] , early_stop_generations=5, early_stop_threshold=0.01):
+                      method_probs=[0.4, 0.3, 0.3] , early_stop_generations=10, early_stop_threshold=0.01):
     """
     遗传算法主函数
 

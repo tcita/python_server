@@ -473,12 +473,12 @@ def genome(A,B):
     move=GA_Strategy(best_genome, A, B)
     return move
 
-
-def DNN(A,B):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = load_model_from_memory("../trained/move_predictor.pth", device)
-    move,_=DNNpredict(A,B,model)
-    return move
+#
+# def DNN(A,B):
+#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#     model = load_model_from_memory("../trained/move_predictor.pth", device)
+#     move,_=DNNpredict(A,B,model)
+#     return move
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -511,24 +511,24 @@ def Transformer(A, B):
 
 
 
-    score1=strategy_TrueScore(A,B,move1)
+    # score1=strategy_TrueScore(A,B,move1)
 
-    genome=load_best_genome("../trained/best_genome.pkl")
-    move2=GA_Strategy(genome,A, B)
-
-    score2=strategy_TrueScore(A,B,move2)
-    if score1<20:
-        print(f"异常值出现 {A},{B} {move1} ")
-
-    if(score1<score2 ):
-        i+=1
-        print(f"assist win {A},{B} {i} times")
-
-        print(f"Transformer得分：{score1}")
-        print(f"assist得分：{score2}")
-        return move2
-    else:
-        return move1
+    # genome=load_best_genome("../trained/best_genome.pkl")
+    # move2=GA_Strategy(genome,A, B)
+    #
+    # score2=strategy_TrueScore(A,B,move2)
+    # if score1<20:
+    #     print(f"异常值出现 {A},{B} {move1} ")
+    #
+    # if(score1<score2 ):
+    #     i+=1
+    #     print(f"assist win {A},{B} {i} times")
+    #
+    #     print(f"Transformer得分：{score1}")
+    #     print(f"assist得分：{score2}")
+    #     return move2
+    # else:
+    return move1
 
     # return move1
 

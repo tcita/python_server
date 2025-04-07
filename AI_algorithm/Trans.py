@@ -278,11 +278,17 @@ def lr_warmup(epoch, lr_max, warmup_epochs):
 # 修改训练函数中的模型初始化部分
 # epochs=1000  warmup_epochs=50 是对应10万个样本的
 def train_model(train_data, epochs=300, batch_size=64, model_path="./trained/transformer_move_predictor_6x3.pth",
-                num_a=6, num_b=3, warmup_epochs=10, lr_max=0.0001, lr_min=0.0000005):
+                num_a=6, num_b=3, warmup_epochs=10, lr_max=0.0001, lr_min=0.0000005,
+                patience=10, min_delta=0.01):
     """
     训练 Transformer 模型 (针对 A=6, B=3)
     允许手动终止训练 (`Ctrl+C`) 并保存当前进度
     并加入学习率预热和余弦退火
+    添加早停机制：当连续patience个epoch的损失改善小于min_delta时停止训练
+
+    Args:
+        patience: 容忍多少个epoch没有显著改善
+        min_delta: 认为有显著改善的最小损失变化量
     """
     global stop_training
 
@@ -311,6 +317,11 @@ def train_model(train_data, epochs=300, batch_size=64, model_path="./trained/tra
     # 学习率预热 (Warmup) 和 余弦退火调度
     scheduler_cosine = CosineAnnealingLR(optimizer, T_max=epochs - warmup_epochs, eta_min=lr_min)
 
+    # 早停相关变量
+    best_loss = float('inf')
+    patience_counter = 0
+    best_model_state = None
+
     try:
         for epoch in range(epochs):
             if stop_training:
@@ -326,7 +337,7 @@ def train_model(train_data, epochs=300, batch_size=64, model_path="./trained/tra
 
                 batch = train_data[i:i + batch_size]
                 inputs, order_targets, pos_targets = [], [], []
-                
+
                 for sample in batch:
                     input_seq, order_tgt, pos_tgt = prepare_data_transformer(sample, num_a=num_a, num_b=num_b)
                     if input_seq is None:
@@ -334,7 +345,7 @@ def train_model(train_data, epochs=300, batch_size=64, model_path="./trained/tra
                     inputs.append(input_seq)
                     order_targets.append(order_tgt)
                     pos_targets.append(pos_tgt)
-                
+
                 if not inputs:
                     continue
 
@@ -360,7 +371,6 @@ def train_model(train_data, epochs=300, batch_size=64, model_path="./trained/tra
                 order_loss = order_criterion(order_logits, order_targets)
                 pos_loss = pos_criterion(pos_preds, pos_targets)
 
-
                 loss = order_loss + pos_loss
 
                 loss.backward()
@@ -377,47 +387,45 @@ def train_model(train_data, epochs=300, batch_size=64, model_path="./trained/tra
             avg_loss = total_loss / batch_count if batch_count > 0 else total_loss
             print(f"Epoch {epoch + 1}/{epochs}, Loss: {avg_loss:.4f}, LR: {new_lr:.6f}")
 
+            # 早停检查
+            if avg_loss < best_loss - min_delta:  # 有显著改善
+                best_loss = avg_loss
+                patience_counter = 0
+                # 保存当前最佳模型状态
+                best_model_state = model.state_dict().copy()
+                print(f"发现新的最佳模型，损失值: {best_loss:.4f}")
+            else:  # 没有显著改善
+                patience_counter += 1
+                print(f"未发现显著改善，耐心计数: {patience_counter}/{patience}")
 
+                if patience_counter >= patience:
+                    print(f"早停触发！连续 {patience} 个epoch无显著改善")
+                    # 恢复到最佳模型状态
+                    if best_model_state is not None:
+                        model.load_state_dict(best_model_state)
+                    break
 
     except KeyboardInterrupt:
-
         print("\n训练手动中断，正在保存当前模型...")
 
     except Exception as e:
-
         print(f"\n训练过程中发生错误: {str(e)}")
-
         import traceback
-
         traceback.print_exc()
 
     finally:
-
         # 确保无论发生什么情况，模型都会被保存
-
         try:
+            # 如果触发了早停并有最佳模型，确保我们使用最佳模型
+            if patience_counter >= patience and best_model_state is not None:
+                model.load_state_dict(best_model_state)
+                print("已加载训练过程中的最佳模型状态")
 
             torch.save(model.state_dict(), model_path)
-
             print(f"Transformer 模型已保存至 {model_path}")
-
         except Exception as save_error:
-
             print(f"保存模型时发生错误: {str(save_error)}")
 
-            # 尝试保存到备用位置
-
-            backup_path = model_path.replace(".pth", "_backup.pth")
-
-            try:
-
-                torch.save(model.state_dict(), backup_path)
-
-                print(f"模型已保存到备用位置: {backup_path}")
-
-            except:
-
-                print("无法保存模型，请检查磁盘空间和权限")
 
     return model
 
@@ -605,7 +613,7 @@ def train():
 
     # 调用 train_model 时传递固定长度，并使用新的模型路径
     # epochs=1000  warmup_epochs=50 是对应10万个样本的
-    train_model(train_data, epochs=700, batch_size=2048,
+    train_model(train_data, epochs=600, batch_size=2048,
                 model_path="./trained/transformer_move_predictor_6x3.pth", # 新路径名
                 num_a=fixed_num_a, num_b=fixed_num_b) # 传递 6 和 3
 
