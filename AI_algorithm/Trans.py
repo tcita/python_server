@@ -599,23 +599,14 @@ def train():
     fixed_num_a = 6
     fixed_num_b = 3
 
-    # # 可选：预先过滤数据，只保留符合 6x3 长度的样本
-    # original_count = len(train_data)
-    # train_data = [s for s in train_data if len(s.get('A', [])) == fixed_num_a and len(s.get('B', [])) == fixed_num_b]
-    # filtered_count = len(train_data)
-    # if original_count > filtered_count:
-    #     print(f"已过滤数据：保留了 {filtered_count} 个 A长度={fixed_num_a}, B长度={fixed_num_b} 的样本 (移除了 {original_count - filtered_count} 个)")
-    #
-    # if not train_data:
-    #     print(f"错误: 过滤后没有找到符合长度 {fixed_num_a}x{fixed_num_b} 的训练数据")
-    #     exit(1)
+
 
 
     # 调用 train_model 时传递固定长度，并使用新的模型路径
     # epochs=1000  warmup_epochs=50 是对应10万个样本的
-    train_model(train_data, epochs=600, batch_size=2048,
-                model_path="./trained/transformer_move_predictor_6x3.pth", # 新路径名
-                num_a=fixed_num_a, num_b=fixed_num_b) # 传递 6 和 3
+    train_model(train_data, epochs=1000, batch_size=2048, model_path="./trained/transformer_move_predictor_6x3.pth",
+                num_a=6, num_b=3, warmup_epochs=50, lr_max=0.0001, lr_min=0.0000005,
+                patience=10, min_delta=0.01)
 
 
 if __name__ == "__main__":

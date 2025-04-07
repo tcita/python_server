@@ -226,7 +226,7 @@ def evaluate_genome(genome, num_rounds=1000, seed_base=111):
 #     return fitnesses
 
 
-def evaluate_genomes_return_fitness(population, num_rounds=1000):
+def evaluate_genomes_return_fitness(population, num_rounds):
     """并行评估多个基因组"""
 
     # 创建进程池
@@ -426,9 +426,9 @@ def differential_evolution(population, fitnesses, pop_size, F=0.8, CR=0.5, num_r
 
 
 # 遗传算法过程
-def genetic_algorithm(pop_size=100, generations=60, num_rounds=100, elitism_ratio=0.1, tournament_size=3,
-                      evolution_methods=['standard', 'island', 'de'],
-                      method_probs=[0.4, 0.3, 0.3] , early_stop_generations=10, early_stop_threshold=0.01):
+def genetic_algorithm(pop_size, generations, num_rounds, elitism_ratio, tournament_size,
+                      evolution_methods,
+                      early_stop_generations, early_stop_threshold):
     """
     遗传算法主函数
 
@@ -521,9 +521,23 @@ def genetic_algorithm(pop_size=100, generations=60, num_rounds=100, elitism_rati
             child = [gene + random.gauss(0, 0.5) if random.random() < mutation_rate else gene for gene in child]  # 变异
             next_population.append(child)  # 添加子代到下一代种群
 
-        # 根据概率选择进化方法
-        method_idx = np.random.choice(len(evolution_methods), p=method_probs)
-        method = evolution_methods[method_idx]
+        # # 根据概率选择进化方法
+        # method_idx = np.random.choice(len(evolution_methods), p=method_probs)
+        # method = evolution_methods[method_idx]
+        # method_history.append(method)
+
+        if len(best_fitness_history) > 1:
+            improvement = best_fitness_history[-1] - best_fitness_history[-2]
+            if improvement > 0:
+                method = method_history[-1]
+                print(f"改进率为 {improvement:.4f}，沿用方法：{method}")
+            else:
+                method = np.random.choice(evolution_methods)
+                print(f"改进率为 {improvement:.4f}，切换方法为：{method}")
+        else:
+            method = np.random.choice(evolution_methods)
+            print(f"无历史改进数据，随机选择方法：{method}")
+
         method_history.append(method)
 
         if method == 'standard':
@@ -588,7 +602,18 @@ def analyze_evolution_methods(best_fitness_history, method_history, all_methods)
 
 
 if __name__ == "__main__":
-    genome = genetic_algorithm()  # 运行遗传算法获取最佳基因组
+
+    pop_size=125
+    generations=30
+    num_rounds=80
+    elitism_ratio=0.1
+    tournament_size=3
+    evolution_methods=['standard', 'island', 'de']
+    # method_probs=[0.4, 0.3, 0.3]
+    early_stop_generations=5
+    early_stop_threshold=0.01
+
+    genome = genetic_algorithm(pop_size,generations, num_rounds, elitism_ratio, tournament_size, evolution_methods, early_stop_generations, early_stop_threshold)  # 运行遗传算法获取最佳基因组
     print("\nGenome model : ", genome)  # 打印最佳基因组
     # evaluate_final_model(genome)  # 评估最终模型性能
     save_best_genome(genome)  # 保存最佳基因组

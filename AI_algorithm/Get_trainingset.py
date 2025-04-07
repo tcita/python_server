@@ -12,7 +12,7 @@ def has_duplicates(lst):
 
 
 h=0
-def generate_training_data(num_samples=33000):
+def generate_training_data(num_samples=1100000):
     dataset = []
     global h
     for i in range(num_samples):
@@ -26,22 +26,22 @@ def generate_training_data(num_samples=33000):
         print(f"{i} of {num_samples}")
         # bestmoves的长度未必都是3  因为当B中就算再出牌也不能得分时 递归不会考虑加入移动到策略中
         # 这里也排除了A,B完全不能得分的情况  大概占比num_samples的10%
-        if len(best_moves) != 3:
-            h+=1
-            print(f"跳过了len(best_moves)!=3的情况{h}次")
-            print(f"A:{A} B:{B}")
+        # if len(best_moves) != 3:
+        #     h+=1
+        #     print(f"跳过了len(best_moves)!=3的情况{h}次")
+        #     print(f"A:{A} B:{B}")
+        #
+        #     print(f"分数{max_score}, 最佳移动:{best_moves}")
+        #     continue
+        #
+        whole = [0, 1, 2]
+        current_rows = set(move[0] for move in best_moves)
 
-            print(f"分数{max_score}, 最佳移动:{best_moves}")
-            continue
-        #
-        # whole = [0, 1, 2]
-        # current_rows = set(move[0] for move in best_moves)
-        #
-        # remaining = [i for i in whole if i not in current_rows]
-        #
-        # for i in remaining:
-        #     if len(best_moves) < 3:
-        #         best_moves.append([i, 0])
+        remaining = [i for i in whole if i not in current_rows]
+
+        for i in remaining:
+            if len(best_moves) < 3:
+                best_moves.append([i, 0])
 
 
         dataset.append({"A": A, "B": B, "max_score": max_score, "best_moves": best_moves})
