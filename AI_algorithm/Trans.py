@@ -13,7 +13,7 @@ _preprocess_cache = {}
 
 
 
-jsonfilename="json/data_raw.json" # 请确保你的 JSON 文件路径正确
+jsonfilename="json/normal_scores_uniq.json" # 请确保你的 JSON 文件路径正确
 
 
 
@@ -604,7 +604,7 @@ def train():
 
     # 调用 train_model 时传递固定长度，并使用新的模型路径
     # epochs=1000  warmup_epochs=50 是对应10万个样本的
-    train_model(train_data, epochs=1000, batch_size=2048, model_path="./trained/transformer_move_predictor_6x3.pth",
+    train_model(train_data, epochs=1000, batch_size=512, model_path="./trained/transformer_move_predictor_6x3.pth",
                 num_a=6, num_b=3, warmup_epochs=10, lr_max=0.00005, lr_min=0.0000005,
                 patience=30, min_delta=0.01)
 

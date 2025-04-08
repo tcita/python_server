@@ -2,7 +2,7 @@ import json
 
 # 假设你的 JSON 数据存储在一个文件中，或者你可以直接将其作为字符串加载
 # 如果数据在文件中，请确保文件路径正确
-file_path = "data_raw.json"
+file_path = "normal_scores_uniq.json"
 
 # 加载 JSON 数据
 with open(file_path, 'r', encoding='utf-8') as file:

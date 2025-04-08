@@ -23,7 +23,7 @@ def init_deck():
 # 在文件顶部添加全局缓存
 _json_cache = {}
 
-def deal_cards(json_file="AI_algorithm/json/data_raw_2.json", seed=None):
+def deal_cards(json_file="AI_algorithm/json/data_raw.json", seed=None):
     # 如果提供了随机种子，设置随机数生成器
     if seed is not None:
         random.seed(seed)

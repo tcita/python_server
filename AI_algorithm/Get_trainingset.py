@@ -11,10 +11,10 @@ def has_duplicates(lst):
     return len(lst) != len(set(lst))
 
 
-h=0
+
 def generate_training_data(num_samples=50000):
     dataset = []
-    global h
+
     for i in range(num_samples):
 
 
@@ -46,8 +46,8 @@ def generate_training_data(num_samples=50000):
 
         dataset.append({"A": A, "B": B, "max_score": max_score, "best_moves": best_moves})
 
-    with open("json/data_raw_2.json", "w") as f:
+    with open("json/data_raw.json", "w") as f:
         json.dump(dataset, f, indent=4)
 
 
-generate_training_data()
+generate_training_data(num_samples=5000000)
