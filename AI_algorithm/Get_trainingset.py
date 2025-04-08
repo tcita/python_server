@@ -25,7 +25,7 @@ def generate_training_data(num_samples=1100000):
         max_score, best_moves = recursive_StrategyAndScore(A, B)
         print(f"{i} of {num_samples}")
         # bestmoves的长度未必都是3  因为当B中就算再出牌也不能得分时 递归不会考虑加入移动到策略中
-        # 这里也排除了A,B完全不能得分的情况  大概占比num_samples的10%
+        # 大概占比num_samples的10%
         # if len(best_moves) != 3:
         #     h+=1
         #     print(f"跳过了len(best_moves)!=3的情况{h}次")

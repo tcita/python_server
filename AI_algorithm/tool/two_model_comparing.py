@@ -544,4 +544,4 @@ if __name__ == "__main__":
 
 
 
-    Compare_TwoModel(genome,Transformer,rounds=20000,plot=True)
+    Compare_TwoModel(genome,Transformer,rounds=10000,plot=True)
