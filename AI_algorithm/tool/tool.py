@@ -1,3 +1,4 @@
+import os
 import pickle
 import random
 import numpy as np
@@ -5,6 +6,10 @@ import torch
 
 
 def simulate_insertion_tool(A, x, pos):
+
+
+
+
 
     candidate_A = A.copy()
     try :
