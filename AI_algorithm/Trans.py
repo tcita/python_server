@@ -226,7 +226,7 @@ def prepare_data_transformer(sample: dict, num_a=6, num_b=3):
         print(f"Warning: Skipping sample with invalid order target in best_moves: {order_target}")
         return None, None, None
 
-    # 将结果存入缓存
+
     result = (input_sequence, order_target, pos_target)
 
 
@@ -266,16 +266,14 @@ def lr_warmup(epoch, lr_max, warmup_epochs):
 def train_model(train_data, epochs=300, batch_size=64, model_path="./trained/transformer_move_predictor_6x3.pth",
                 num_a=6, num_b=3, warmup_epochs=10, lr_max=0.0001, lr_min=0.0000005,
                 patience=10, min_delta=0.01):
-    """
-    训练 Transformer 模型 (针对 A=6, B=3)
-    允许手动终止训练 (`Ctrl+C`) 并保存当前进度
-    并加入学习率预热和余弦退火
-    添加早停机制：当连续patience个epoch的损失改善小于min_delta时停止训练
+    # 添加GPU信息检查
+    if torch.cuda.is_available():
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
+        print(f"GPU总内存: {torch.cuda.get_device_properties(0).total_memory / 1024 ** 3:.2f} GB")
+        print(f"CUDA版本: {torch.version.cuda}")
+    else:
+        print("警告: 未检测到可用的GPU!")
 
-    Args:
-        patience: 容忍多少个epoch没有显著改善
-        min_delta: 认为有显著改善的最小损失变化量
-    """
     global stop_training
 
     d_model = 256
@@ -317,8 +315,7 @@ def train_model(train_data, epochs=300, batch_size=64, model_path="./trained/tra
             batch_count = 0
             np.random.shuffle(train_data)
 
-            # 打印当前epoch和学习率
-            print(f"\nEpoch {epoch + 1}/{epochs}, Learning Rate: {lr_max:.6f}")
+
 
             for i in range(0, len(train_data), batch_size):
                 if stop_training:
@@ -342,7 +339,7 @@ def train_model(train_data, epochs=300, batch_size=64, model_path="./trained/tra
                 order_targets = torch.LongTensor(np.array(order_targets)).to(device)
                 pos_targets = torch.FloatTensor(np.array(pos_targets)).to(device)
 
-                # 在训练前，根据学习率预热策略更新学习率
+                      # 在训练前，根据学习率预热策略更新学习率
                 if epoch < warmup_epochs:
                     new_lr = lr_warmup(epoch, lr_max, warmup_epochs)
                 else:
@@ -371,7 +368,7 @@ def train_model(train_data, epochs=300, batch_size=64, model_path="./trained/tra
 
                 # 每个batch的训练日志
                 if batch_count % 10 == 0:  # 每10个batch打印一次
-                    print(f"    Batch {batch_count}/{len(train_data)//batch_size}, Loss: {loss.item():.4f}")
+                    print(f"    Batch {batch_count}/{len(train_data)//batch_size}, Loss: {loss.item():.4f},LR: {new_lr:.6f}")
 
             # 在每个epoch后更新余弦退火学习率
             if epoch >= warmup_epochs:
@@ -590,11 +587,12 @@ def train():
         print("错误: 没有加载到有效的训练数据")
         exit(1)
 
-
+    # 学习率可能太大
+    # batchsize如果过大导致学习率下降的很慢 有梯度爆炸风险
     # 调用 train_model 时传递固定长度，并使用新的模型路径
     # epochs=1000  warmup_epochs=50 是对应10万个样本的
-    train_model(train_data, epochs=1000, batch_size=2048, model_path="./trained/transformer_move_predictor_6x3.pth",
-                num_a=6, num_b=3, warmup_epochs=10, lr_max=0.00001, lr_min=0.0000001,
+    train_model(train_data, epochs=1000, batch_size=1024, model_path="./trained/transformer_move_predictor_6x3.pth",
+                num_a=6, num_b=3, warmup_epochs=5, lr_max=0.00001, lr_min=0.000001,
                 patience=5, min_delta=0.01)
 
 

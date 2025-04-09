@@ -13,7 +13,7 @@ from AI_algorithm.GA import  GA_Strategy
 import matplotlib.pyplot as plt
 
 from AI_algorithm.Trans import TransformerMovePredictor, Transformer_predict
-from AI_algorithm.Trans_assist import TransformerMovePredictor_assist, Transformer_predict_assist
+
 from AI_algorithm.brute_force import recursive_StrategyAndScore
 from AI_algorithm.server import load_model_from_memory
 from AI_algorithm.tool.tool import load_best_genome, deal_cards_tool, simulate_insertion_tool
