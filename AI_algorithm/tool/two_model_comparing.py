@@ -16,6 +16,7 @@ from AI_algorithm.Trans import TransformerMovePredictor, Transformer_predict
 
 from AI_algorithm.brute_force import recursive_StrategyAndScore
 from AI_algorithm.server import load_model_from_memory
+from AI_algorithm.tool.Get_cache import FastCacheQuery
 from AI_algorithm.tool.tool import load_best_genome, deal_cards_tool, simulate_insertion_tool
 
 
@@ -473,20 +474,20 @@ def genome(A,B):
     move=GA_Strategy(best_genome, A, B)
     return move
 
-#
-# def DNN(A,B):
-#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#     model = load_model_from_memory("../trained/move_predictor.pth", device)
-#     move,_=DNNpredict(A,B,model)
-#     return move
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-i = 0
+
+
+assist_count = 0
+
+
+
+genomeforassist = load_best_genome("../trained/best_genome.pkl")
 def Transformer(A, B):
     # 加入专门预测低分的模型
-    global i
+    global assist_count
 
     num_a_test = 6 # <--- 修改
     num_b_test = 3
@@ -509,28 +510,31 @@ def Transformer(A, B):
     model1.load_state_dict(torch.load(model_path_1, map_location=device))
     move1, _= Transformer_predict(A, B, model1, num_a=num_a_test, num_b=num_b_test)
 
+    # 加入对于极端值的缓存  但是目前由于可能性太多,命中不了
+    # result = cache_query.query(A, B)
+    # if result['hit']:
+    #     print(f"缓存命中! 最大分数: {result['max_score']}")
+    #     print(f"最佳移动: {result['best_moves']}")
+    #     # 直接返回极端值的缓存结果
+    #     return result['best_moves']
+
+    score1=strategy_TrueScore(A,B,move1)
 
 
-    # score1=strategy_TrueScore(A,B,move1)
 
-    # genome=load_best_genome("../trained/best_genome.pkl")
-    # move2=GA_Strategy(genome,A, B)
-    #
-    # score2=strategy_TrueScore(A,B,move2)
-    # if score1<20:
-    #     print(f"异常值出现 {A},{B} {move1} ")
-    #
-    # if(score1<score2 ):
-    #     i+=1
-    #     print(f"assist win {A},{B} {i} times")
-    #
-    #     print(f"Transformer得分：{score1}")
-    #     print(f"assist得分：{score2}")
-    #     return move2
-    # else:
+
+    move2=GA_Strategy(genomeforassist,A, B)
+
+    score2=strategy_TrueScore(A,B,move2)
+    if score1<score2:
+
+        assist_count+=1
+        print(f"assist  win {assist_count} {A},{B}")
+        return move2
+
     return move1
 
-    # return move1
+
 
 
 

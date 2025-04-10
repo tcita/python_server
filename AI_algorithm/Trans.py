@@ -6,7 +6,7 @@ import torch.nn as nn
 from AI_algorithm.tool.tool import calculate_score_by_strategy, calculate_future_score
 
 
-jsonfilename = "json/normal_scores_uniq.jsonl"
+jsonfilename = "json/data_uniq.jsonl"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 if device.type == "cuda":
@@ -368,14 +368,14 @@ def train_model(train_data, epochs=300, batch_size=64, model_path="./trained/tra
 
                 # 每个batch的训练日志
                 if batch_count % 10 == 0:  # 每10个batch打印一次
-                    print(f"    Batch {batch_count}/{len(train_data)//batch_size}, Loss: {loss.item():.4f},LR: {new_lr:.6f}")
+                    print(f"    Batch {batch_count}/{len(train_data)//batch_size}, Loss: {loss.item():.4f},LR: {new_lr:.7f}")
 
             # 在每个epoch后更新余弦退火学习率
             if epoch >= warmup_epochs:
                 scheduler_cosine.step()
 
             avg_loss = total_loss / batch_count if batch_count > 0 else total_loss
-            print(f"Epoch {epoch + 1}/{epochs}, Average Loss: {avg_loss:.4f}, LR: {new_lr:.6f}")
+            print(f"Epoch {epoch + 1}/{epochs}, Average Loss: {avg_loss:.4f}, LR: {new_lr:.7f}")
 
             # 早停检查
             if avg_loss < best_loss - min_delta:  # 有显著改善
@@ -587,12 +587,12 @@ def train():
         print("错误: 没有加载到有效的训练数据")
         exit(1)
 
-    # 学习率可能太大
-    # batchsize如果过大导致学习率下降的很慢 有梯度爆炸风险
+
     # 调用 train_model 时传递固定长度，并使用新的模型路径
-    # epochs=1000  warmup_epochs=50 是对应10万个样本的
-    train_model(train_data, epochs=1000, batch_size=1024, model_path="./trained/transformer_move_predictor_6x3.pth",
-                num_a=6, num_b=3, warmup_epochs=5, lr_max=0.00001, lr_min=0.000001,
+    # 观察训练拟合后可以手动结束训练
+
+    train_model(train_data, epochs=100, batch_size=8192, model_path="./trained/transformer_move_predictor_6x3.pth",
+                num_a=6, num_b=3, warmup_epochs=5, lr_max=0.0005, lr_min=0.0000001,
                 patience=5, min_delta=0.01)
 
 

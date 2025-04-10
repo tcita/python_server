@@ -12,6 +12,7 @@ from AI_algorithm.tool.tool import simulate_insertion_tool
 # 返回值bestmoves的长度未必都是3  当再出牌也不能得分时  递归不会加入移动
 
 # 比如A=[1,2,3,4,5,6]  B =[1,2,1]
+# TODO 优化
 def recursive_StrategyAndScore(A, B, original_indices=None, move_sequence=None, used_indices=None):
     if move_sequence is None:
         move_sequence = []
