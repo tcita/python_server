@@ -23,7 +23,7 @@ def init_deck():
 # 在文件顶部添加全局缓存
 _json_cache = {}
 
-def deal_cards(json_file="AI_algorithm/json/data_raw.json", seed=None):
+def deal_cards(json_file="AI_algorithm/json/data_raw2.json", seed=None):
     # 如果提供了随机种子，设置随机数生成器
     if seed is not None:
         random.seed(seed)
@@ -603,14 +603,14 @@ def analyze_evolution_methods(best_fitness_history, method_history, all_methods)
 
 if __name__ == "__main__":
 
-    pop_size=300
+    pop_size=1000
     generations=30
-    num_rounds=80
+    num_rounds=500
     elitism_ratio=0.1
     tournament_size=3
     evolution_methods=['standard', 'island', 'de']
-    # method_probs=[0.4, 0.3, 0.3]
-    early_stop_generations=10
+
+    early_stop_generations=5
     early_stop_threshold=0.01
 
     genome = genetic_algorithm(pop_size,generations, num_rounds, elitism_ratio, tournament_size, evolution_methods, early_stop_generations, early_stop_threshold)  # 运行遗传算法获取最佳基因组

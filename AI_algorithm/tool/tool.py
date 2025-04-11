@@ -5,60 +5,86 @@ import numpy as np
 import torch
 
 
-def simulate_insertion_tool(A, x, pos):
+def simulate_insertion_tool(A, b, pos):
+    """
+    将元素b插入到列表A的指定位置pos，并处理可能发生的匹配情况。
 
+    参数:
+        A: list - 当前的牌列表(动态变化)
+        b: int - 要插入的元素(来自B列表)
+        pos: int - b要插入到A中的位置索引
 
+    返回值:
+        tuple - 包含5个元素:
+            1. int: 本次操作产生的得分
+            2. int: 被移除的匹配序列长度
+            3. int: 操作后A的长度
+            4. int: 是否产生匹配(1=是，0=否)
+            5. list: 操作后的A列表
+    """
+    # 创建A的副本避免修改原始列表
+    copy_A = A.copy()
 
+    # 当A为空时,直接往A中插入b,这时候不产生匹配
+    if len(copy_A) == 0:
+        copy_A.append(b)
 
+        return 0, 0, 1, 0, copy_A
 
-    candidate_A = A.copy()
-    try :
-        if len(candidate_A) == 0:
-            candidate_A.append(x)
-            return 0, 0, len(candidate_A), 0, candidate_A
+    try:
+        # 使用列表的insert函数插入b到A的pos位置
+        copy_A.insert(pos, b)
 
-        # if pos == 0:
-        #     raise ValueError("pos 不能为 0")
+        # 向左右分别寻找b是否与当前列表A中已经存在的数值相同
 
-        candidate_A.insert(pos, x)
         left_idx, right_idx = None, None
 
+        # 从插入位置pos的左侧向左遍历列表copy_A，寻找与插入值b相等的最近的元素的索引
         for i in range(pos - 1, -1, -1):
-            if candidate_A[i] == x:
+            if copy_A[i] == b:
                 left_idx = i
                 break
+
+        # 从插入位置pos的右侧向右遍历列表copy_A，寻找与插入值b相等的最近的元素的索引
+        for j in range(pos + 1, len(copy_A)):
+            if copy_A[j] == b:
+                right_idx = j
+                break
+
+        # 无论向左还是向右都找不到匹配
+        if left_idx is None and right_idx is None:
+            return 0, 0, len(copy_A), 0, copy_A
+
+        # 计算插入位置pos与匹配元素的索引(left_idx, right_idx)之间的距离
+        # 如果没有匹配的元素，则将距离设置为正无穷大
+        left_distance = pos - left_idx if left_idx is not None else float('inf')
+        right_distance = right_idx - pos if right_idx is not None else float('inf')
+
+        # 确定匹配发生在哪一侧（左侧或右侧）获取匹配序列的起始和结束索引
+        if left_distance < right_distance:
+
+            start, end = left_idx, pos
+        elif right_distance < left_distance:
+
+            start, end = pos, right_idx
+        else:
+            # 两侧距离相等但都不是无穷大（即两侧都有匹配），这种情况不会出现,这是由A在初始化时元素不可重复保证的
+            # 如果左右距离都是无穷大，说明没有匹配 根据 IEEE 754 浮点数标准，所有正无穷大 (float('inf')) 被视为相等
+            return 0, 0, len(copy_A), 0, copy_A
+
+        # 通过索引获取匹配序列
+        removal_interval = copy_A[start:end + 1]
+        # 计分
+        score = sum(removal_interval)
+        # 将A中的匹配序列进行移除
+        new_A = copy_A[:start] + copy_A[end + 1:]
+
+        return score, len(removal_interval), len(new_A), 1, new_A
+
     except Exception as e:
-        print(f"当将 {x}  插入到当前A： {A}的位置 {pos} 时发生错误。")
+        print(f"当将 {b} 插入到当前A：{A}的位置 {pos} 时发生错误。")
         print(f"Error message: {str(e)}")
         raise
-    for j in range(pos + 1, len(candidate_A)):
-        if candidate_A[j] == x:
-            right_idx = j
-            break
-
-    if left_idx is None and right_idx is None:
-        return 0, 0, len(candidate_A), 0, candidate_A
-
-    left_distance = pos - left_idx if left_idx is not None else float('inf')
-    right_distance = right_idx - pos if right_idx is not None else float('inf')
-
-    if left_distance < right_distance:
-        start, end = min(pos, left_idx), max(pos, left_idx)
-    elif right_distance < left_distance:
-        start, end = min(pos, right_idx), max(pos, right_idx)
-    else:
-        left_sum = sum(candidate_A[min(pos, left_idx):max(pos, left_idx) + 1])
-        right_sum = sum(candidate_A[min(pos, right_idx):max(pos, right_idx) + 1])
-        start, end = (min(pos, left_idx), max(pos, left_idx)) if left_sum >= right_sum else (
-        min(pos, right_idx), max(pos, right_idx))
-
-    removal_interval = candidate_A[start:end + 1]
-    score = sum(removal_interval)
-    new_A = candidate_A[:start] + candidate_A[end + 1:]
-
-    return score, len(removal_interval), len(new_A), 1, new_A
-
-
 def init_deck_tool():
     return [i for i in range(1, 14) for _ in range(4)]
 
