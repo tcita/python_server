@@ -77,7 +77,7 @@ def GA_Strategy(genome, A, B):
     - strategy: 最佳策略
     """
     import torch
-    import numpy as np
+
 
     # 检查CUDA可用性并设置设备
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -159,7 +159,6 @@ def GA_Strategy(genome, A, B):
 # 每一个generation执行pop_size次
 def evaluate_genome(genome, num_rounds=1000, seed_base=111):
     import torch
-    import numpy as np
     from AI_algorithm.tool.tool import calculate_score_by_strategy
 
     # 检查并设置 GPU 可用性
@@ -452,7 +451,7 @@ def genetic_algorithm(pop_size, generations, num_rounds, elitism_ratio, tourname
     population = []
     for _ in range(pop_size):
         genome = []
-        # 引入更多随机性
+        # 引入更多随机性  怎么初始化?
         if random.random() < 0.7:  # 70%的个体按原方式初始化
             for i in range(6):
                 if i == 0 or i == 3:
@@ -461,6 +460,7 @@ def genetic_algorithm(pop_size, generations, num_rounds, elitism_ratio, tourname
                     genome.append(random.uniform(-1, 1))
         else:  # 30%的个体完全随机初始化
             for i in range(6):
+                # 用[-2,2]随机浮点数
                 genome.append(random.uniform(-2, 2))
         population.append(genome)
     best_fitness_history, avg_fitness_history = [], []  # 初始化历史最佳适应度和平均适应度列表
@@ -481,7 +481,7 @@ def genetic_algorithm(pop_size, generations, num_rounds, elitism_ratio, tourname
         # 早停检查
         improvement = gen_best - last_best_fitness
 
-        # 修复除法错误
+        # 修复除法错误 确保 last_best_fitness 不是无效值
         if last_best_fitness != -float('inf') and abs(last_best_fitness) > 1e-10:
             relative_improvement = improvement / abs(last_best_fitness)
         else:

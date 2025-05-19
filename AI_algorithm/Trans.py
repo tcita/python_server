@@ -449,7 +449,7 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
         # 应用新的特征工程
         # 1. 计算序列和
         A_sum = sum(A)
-        B_sum = sum(B)
+        # B_sum = sum(B)
 
         # 2. 计算B序列中重复的元素数
         B_counter = {}
@@ -541,6 +541,184 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
         return default_strategy, default_score
 
 
+def Transformer_predict_batch(A_batch, B_batch, model, num_a=6, num_b=3, device='cuda'):
+    """
+    批量使用训练好的 Transformer 模型进行预测 (针对 A=6, B=3)。
+
+    参数:
+        A_batch: 列表的列表，每个内部列表是一个A序列，长度为num_a
+        B_batch: 列表的列表，每个内部列表是一个B序列，长度为num_b
+        model: TransformerMovePredictor模型实例
+        num_a: A序列的长度，默认为6
+        num_b: B序列的长度，默认为3
+        device: 计算设备，默认为'cuda'
+
+    返回:
+        两个列表: (moves_batch, scores_batch)
+    """
+    try:
+        batch_size = len(A_batch)
+        moves_batch = []
+        scores_batch = []
+
+        # 检查模型类型
+        if not isinstance(model, TransformerMovePredictor):
+            raise ValueError(f"需要 TransformerMovePredictor 实例, 但得到 {type(model)}")
+
+        model.eval()
+
+        # 分类样本：快速路径和需要模型推理的
+        fast_path_indices = []
+        model_inference_indices = []
+
+        for i in range(batch_size):
+            A = A_batch[i]
+            B = B_batch[i]
+
+            # 检查长度
+            if len(A) != num_a or len(B) != num_b:
+                raise ValueError(
+                    f"样本 {i}: DNNpredict 期望输入 A 长度为 {num_a}, B 长度为 {num_b}, 但收到 A:{len(A)}, B:{len(B)}")
+
+            # 快速路径检查
+            if not set(A) & set(B) and len(B) == len(set(B)):
+                fast_path_indices.append(i)
+            else:
+                model_inference_indices.append(i)
+
+        # 初始化结果列表，使其长度与batch_size相同
+        moves_batch = [None] * batch_size
+        scores_batch = [None] * batch_size
+
+        # 处理快速路径样本
+        for idx in fast_path_indices:
+            moves_batch[idx] = [[0, 0], [1, 0], [2, 0]]
+            scores_batch[idx] = 0
+
+        # 如果没有需要模型推理的样本，直接返回
+        if not model_inference_indices:
+            return moves_batch, scores_batch
+
+        # 准备模型推理的批量数据
+        all_features = []
+
+        for idx in model_inference_indices:
+            A = A_batch[idx]
+            B = B_batch[idx]
+
+            # 1. 计算序列和
+            A_sum = sum(A)
+
+            # 2. 计算B序列中重复的元素数
+            B_counter = {}
+            for val in B:
+                B_counter[val] = B_counter.get(val, 0) + 1
+            B_duplicates = sum(count - 1 for count in B_counter.values())
+
+            # 3. 交集特征
+            intersection = set(A) & set(B)
+            intersection_size = len(intersection)
+
+            # 4. 位置特征
+            positions_in_A = {}
+            for i, a_val in enumerate(A):
+                positions_in_A[a_val] = i
+
+            # 创建增强的输入序列
+            enhanced_sequence = []
+
+            # 处理A序列
+            for i, val in enumerate(A):
+                is_in_intersection = 1.0 if val in intersection else 0.0
+                relative_position = i / num_a
+                relative_size = val / A_sum if A_sum != 0 else 0
+                intersection_ratio = intersection_size / num_b
+
+                enhanced_sequence.append([
+                    val,  # 原始值
+                    val / A_sum if A_sum != 0 else 0,  # 值占A总和的比例
+                    is_in_intersection,  # 是否在交集中
+                    relative_position,  # 相对位置
+                    relative_size,  # 相对大小（占总和的比例）
+                    intersection_ratio  # 交集大小比例
+                ])
+
+            # 处理B序列
+            for i, val in enumerate(B):
+                is_in_A = 1.0 if val in A else 0.0
+                position_in_A = positions_in_A.get(val, -1)
+                relative_position_in_A = position_in_A / num_a if position_in_A >= 0 else -0.1
+
+                # 计算未来得分特征
+                remaining_B = B[i + 1:] if i < len(B) - 1 else []
+                future_score = calculate_future_score(A, remaining_B)
+                future_score_ratio = future_score / (sum(A) + sum(B)) if (sum(A) + sum(B)) > 0 else 0
+
+                enhanced_sequence.append([
+                    val,  # 原始值
+                    future_score_ratio,  # 未来得分比例
+                    is_in_A,  # 是否在A中
+                    relative_position_in_A,  # 在A中的相对位置（如果存在）
+                    B_duplicates / num_b,  # B中重复元素的比例
+                    intersection_ratio  # 交集大小比例
+                ])
+
+            all_features.append(enhanced_sequence)
+
+        # 转换为批量张量并送入GPU
+        input_tensor = torch.FloatTensor(np.array(all_features, dtype=np.float32)).to(device)
+
+        # 批量推理
+        with torch.no_grad():
+            order_logits, pos_preds = model(input_tensor)
+
+        # 处理每个样本的结果
+        for batch_idx, original_idx in enumerate(model_inference_indices):
+            A = A_batch[original_idx]
+            B = B_batch[original_idx]
+
+            # 获取该样本的预测结果
+            sample_order_logits = order_logits[batch_idx].unsqueeze(0)
+            sample_pos_preds = pos_preds[batch_idx].unsqueeze(0)
+
+            # 使用与原始函数相同的后处理逻辑
+            pred_order_indices = sample_order(sample_order_logits).squeeze(0).cpu().numpy()
+            pred_moves_raw = sample_pos_preds.squeeze(0).cpu().numpy()
+
+            pos_range_base = len(A)
+            pred_moves_clipped = [int(np.clip(p, 0, pos_range_base + k)) for k, p in enumerate(pred_moves_raw)]
+
+            best_moves = [[int(pred_order_indices[k]), pred_moves_clipped[k]] for k in range(num_b)]
+
+            # final_order = [move[0] for move in best_moves]
+            # final_moves = [move[1] for move in best_moves]
+
+            # pred_score = calculate_score(A, B, final_order, final_moves)
+
+            # 保存结果
+            moves_batch[original_idx] = best_moves
+            # scores_batch[original_idx] = pred_score
+
+        return moves_batch
+
+    except Exception as e:
+        print(f"批量使用 Transformer 预测时出错: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        print("返回默认策略")
+
+        # 对于错误情况，为每个样本返回默认策略
+        moves_batch = []
+        scores_batch = []
+        for i in range(batch_size):
+            A = A_batch[i]
+            B = B_batch[i]
+            default_strategy = [[j, 1] for j in range(len(B))]
+            default_score = calculate_score_by_strategy(A, B, default_strategy)
+            moves_batch.append(default_strategy)
+            scores_batch.append(default_score)
+
+        return moves_batch, scores_batch
 _json_cache = {}
 
 
