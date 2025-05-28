@@ -23,7 +23,7 @@ def init_deck():
 # 在文件顶部添加全局缓存
 _json_cache = {}
 
-def deal_cards(json_file="AI_algorithm/json/data_raw2.json", seed=None):
+def deal_cards(json_file="AI_algorithm/json/data_uniq2.json", seed=None):
     # 如果提供了随机种子，设置随机数生成器
     if seed is not None:
         random.seed(seed)
@@ -94,23 +94,24 @@ def GA_Strategy(genome, A, B):
     def compute_card_values_batch(A_copy, B, genome_tensor):
         card_values = []
 
-        # 预先计算一些共用特征
+        #特征计算
         sum_A = sum(A_copy)
         A_set = set(A_copy)
 
+        #使用嵌套循环进行插入模拟  每一个插入位置都会计算6个特征
         for i, card in enumerate(B):
             remaining_B = [B[j] for j in range(len(B)) if j != i]
             remaining_B_set = set([card] + remaining_B)
+            #特征计算
             intersection_count = len(remaining_B_set & A_set)
 
-            # 为所有可能的插入位置创建特征批次
+            # 插入位置以及特征集合
             all_features = []
             all_positions = []
 
-
-            # 收集所有位置的特征
             for pos in range(len(A_copy) + 1):
-                score, removal_length, new_length, match_found, new_A = simulate_insertion_tool(A_copy, card, pos)
+                #特征计算
+                score, removal_length, new_length, _, new_A = simulate_insertion_tool(A_copy, card, pos)
                 future_score = calculate_future_score(new_A, remaining_B)
 
                 features = [
@@ -123,23 +124,28 @@ def GA_Strategy(genome, A, B):
                 ]
 
                 all_features.append(features)
-                # 最佳插入位置
+
                 all_positions.append(pos)
                 # all_scores.append(score)
                 # all_new_As.append(new_A)
 
-            # 将所有特征转换为GPU张量并一次性计算
+            # 将所有特征转换为张量并一次性在GPU上计算
             if all_features:
                 features_tensor = torch.tensor(all_features, dtype=torch.float32, device=device)
-                # 批量计算点积 (每个位置的评估值)
+
+
+                # 特征张量和目前的基因张量计算点积。对于每一个可能的插入位置，
+                # 其对应的特征向量会与genome_tensor 进行点积运算 也就是给每个特征加权：
+                # 评估值 = (feature1 * genome_tensor的第一个元素) + (feature2 * genome_tensor的第二个元素) + ... + (feature6 * genome_tensor的第六个元素)
                 values = torch.matmul(features_tensor, genome_tensor)
 
-                # 找到最佳位置
+                # 用于返回输入张量中最大元素的索引
                 best_idx = torch.argmax(values).item()
+                #该索引对应的值(最大的评估值)
                 best_value = values[best_idx].item()
+                #最大评估值的对应插入位置(最优插入)
                 best_pos = all_positions[best_idx]
-                # best_score = all_scores[best_idx]
-                # best_new_A = all_new_As[best_idx]
+
 
                 card_values.append((i, best_value, best_pos))
 
@@ -169,7 +175,7 @@ def evaluate_genome(genome, num_rounds=1000, seed_base=111):
     # genome_tensor = torch.tensor(genome, dtype=torch.float32, device=device)
 
     # 批处理大小
-    batch_size = 32
+    batch_size = 128
 
     # 预分配结果数组
     total_scores = torch.zeros(num_rounds, dtype=torch.float32, device=device)
