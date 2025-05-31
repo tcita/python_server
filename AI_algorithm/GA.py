@@ -266,33 +266,48 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
     - new_population: 进化后的新种群
     - new_fitnesses: 新种群的适应度
     """
-    # 动态调整迁移率 - 随着进化过程增加交流
-    progress_ratio = generation / max_generations if max_generations > 0 else 0.5
+
+
+    #计算运行进度
+    progress_ratio = generation / max_generations   if max_generations > 0 else 0.5
+    # 动态增加迁移率  一
     adaptive_migration_rate = migration_rate * (1.0 + progress_ratio)  # 迁移率逐渐增加到原来的2倍
 
-    # 计算每个岛屿的规模和迁移数量
-    island_size = pop_size // islands
+    # 计算每个岛屿的容纳的种群数量和迁移数量
+    island_size = pop_size // islands # 向下取整
+    #向0取整
     migration_size = int(island_size * adaptive_migration_rate)
 
-    # 将总人口分割成岛屿
+    # 将总种群分割成岛屿
     island_populations = []
     island_fitnesses = []
 
+    # 将总种群按岛屿进行分割?
     for i in range(islands):
+        # 计算第i个岛屿在总种群中的起始,结束索引
         start_idx = i * island_size
+        # 将剩下的人口放入最后一个岛
         end_idx = start_idx + island_size if i < islands - 1 else pop_size
         island_populations.append(population[start_idx:end_idx])
         island_fitnesses.append(fitnesses[start_idx:end_idx])
 
     # 每个岛屿独立进化
+    #二维列表 每个岛屿进化后产生的新子种群
     new_island_populations = []
+
+    # 二维列表 在某个岛上的某个个体的适应度 [岛索引][个体索引]
     new_island_fitnesses = []
 
+
+    # 岛内进化
     for i in range(islands):
-        # 岛内进化
+
         # 选择精英
+
+        # 按照该岛的子种群在island_fitnesses[i]列表中对应的适应度值从（降序）排列
         sorted_indices = sorted(range(len(island_fitnesses[i])),
                               key=lambda k: island_fitnesses[i][k], reverse=True)
+
         elitism_count = int(0.1 * len(island_populations[i]))
         elites = [island_populations[i][idx] for idx in sorted_indices[:elitism_count]]
 
@@ -321,7 +336,7 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
                             for pop in new_island_populations]
 
     # 迁移过程 (如果当前代数是迁移间隔的倍数)
-    # 注意：在实际使用时，需要传入当前代数作为参数，这里假设每次调用都执行迁移
+
     for i in range(islands):
         # 选择当前岛屿的最佳个体进行迁移
         sorted_indices = sorted(range(len(new_island_fitnesses[i])),
