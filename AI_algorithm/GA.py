@@ -307,18 +307,23 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
         # 按照该岛的子种群在island_fitnesses[i]列表中对应的适应度值从（降序）排列
         sorted_indices = sorted(range(len(island_fitnesses[i])),
                               key=lambda k: island_fitnesses[i][k], reverse=True)
-
+#前10%作为精英
         elitism_count = int(0.1 * len(island_populations[i]))
+#从降序排列的子种群切片生成精英列表
         elites = [island_populations[i][idx] for idx in sorted_indices[:elitism_count]]
 
-        # 锦标赛选择
+        # 锦标赛选择  从排除精英的种群中选取父代  这一定程度上缓解了足够优秀的个体在精英选择中被遗漏的情况
         selected = []
         for _ in range(len(island_populations[i]) - elitism_count):
+            #在非精英中随机选择tournament_size个 个体
             candidates = random.sample(range(len(island_populations[i])), tournament_size)
+            #选出具有最大的适应度的个体,它胜出了
             winner_idx = max(candidates, key=lambda idx: island_fitnesses[i][idx])
+            #加入筛选出的种群,作为父代
             selected.append(island_populations[i][winner_idx])
 
         # 交叉和变异
+        #精英个体被直接复制到下一代
         next_population = elites.copy()
         while len(next_population) < len(island_populations[i]):
             parent1, parent2 = random.sample(selected, 2)
