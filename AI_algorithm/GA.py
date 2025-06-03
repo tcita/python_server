@@ -95,7 +95,7 @@ def GA_Strategy(genome, A, B):
         card_values = []
 
         #特征计算
-        sum_A = sum(A_copy)
+
         A_set = set(A_copy)
 
         #使用嵌套循环进行插入模拟  每一个插入位置都会计算6个特征
@@ -103,6 +103,7 @@ def GA_Strategy(genome, A, B):
             remaining_B = [B[j] for j in range(len(B)) if j != i]
             remaining_B_set = set([card] + remaining_B)
             #特征计算
+            #打出的B的价值占
             intersection_count = len(remaining_B_set & A_set)
 
             # 插入位置以及特征集合
@@ -112,6 +113,7 @@ def GA_Strategy(genome, A, B):
             for pos in range(len(A_copy) + 1):
                 #特征计算
                 score, removal_length, new_length, _, new_A = simulate_insertion_tool(A_copy, card, pos)
+                sum_new_A = sum(new_A)
                 future_score = calculate_future_score(new_A, remaining_B)
 
                 features = [
@@ -119,7 +121,7 @@ def GA_Strategy(genome, A, B):
                     removal_length,  # 移除长度
                     new_length,  # 新长度
                     future_score,  # 未来得分
-                    sum_A,  # A的元素总和
+                    sum_new_A,  # 匹配后新A的元素总和
                     intersection_count,  # B与A的交集数量
                 ]
 
@@ -175,7 +177,7 @@ def evaluate_genome(genome, num_rounds=1000, seed_base=111):
     # genome_tensor = torch.tensor(genome, dtype=torch.float32, device=device)
 
     # 批处理大小
-    batch_size = 128
+    batch_size = 1024
 
     # 预分配结果数组
     total_scores = torch.zeros(num_rounds, dtype=torch.float32, device=device)
@@ -245,7 +247,7 @@ def evaluate_genomes_return_fitness(population, num_rounds):
 
 # 岛屿模型实现，用于增加种群多样性
 def island_model_evolution(population, fitnesses, pop_size, tournament_size, mutation_strength,
-                           num_rounds, islands=4, migration_interval=10, migration_rate=0.1,
+                           num_rounds, islands=4, migration_rate=0.1,
                            generation=0, max_generations=60):
     """
     实现岛屿模型进化，将总人口分成几个独立'岛屿'，定期交换个体
@@ -257,7 +259,7 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
     - tournament_size: 锦标赛选择规模
     - mutation_strength: 变异强度
     - islands: 岛屿数量
-    - migration_interval: 多少代进行一次迁移
+
     - migration_rate: 每次迁移的个体比例
     - generation: 当前代数
     - max_generations: 最大代数
@@ -269,20 +271,22 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
 
 
     #计算运行进度
+    # progress_ratio需要＞0
     progress_ratio = generation / max_generations   if max_generations > 0 else 0.5
-    # 动态增加迁移率  一
+    # 动态增加迁移率
     adaptive_migration_rate = migration_rate * (1.0 + progress_ratio)  # 迁移率逐渐增加到原来的2倍
 
     # 计算每个岛屿的容纳的种群数量和迁移数量
     island_size = pop_size // islands # 向下取整
-    #向0取整
+    #迁移数量 向0取整
     migration_size = int(island_size * adaptive_migration_rate)
 
     # 将总种群分割成岛屿
     island_populations = []
     island_fitnesses = []
 
-    # 将总种群按岛屿进行分割?
+    # 将总种群按岛屿进行分割
+    # island_populations 在整个算法中仅作为输入数据源 初始化后不做修改
     for i in range(islands):
         # 计算第i个岛屿在总种群中的起始,结束索引
         start_idx = i * island_size
@@ -322,15 +326,23 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
             #加入筛选出的种群,作为父代
             selected.append(island_populations[i][winner_idx])
 
-        # 交叉和变异
+
         #精英个体被直接复制到下一代
         next_population = elites.copy()
+
         while len(next_population) < len(island_populations[i]):
+            # 随机两个作为父代
             parent1, parent2 = random.sample(selected, 2)
+            # 交叉
+            #     以 70% 的概率，取 (p1 + p2) / 2（即两个父代的平均值）
+            #     以 30% 的概率，直接取 p1。
+            #     将上述逻辑应用于每一对 (p1, p2)，并生成一个新的列表 child
             child = [(p1 + p2) / 2 if random.random() < 0.7 else p1
                     for p1, p2 in zip(parent1, parent2)]
-            # 修复变异部分的错误
-            mutation_strength = 0.7  # 增加变异强度
+
+            # 变异
+            # mutation_strength = 0.7
+            # 对子代的每个基因，都加上高斯分布中采样的随机数。这会引入小的随机扰动。(变异)
             child = [gene + random.gauss(0, mutation_strength) for gene in child]
             next_population.append(child)
 
@@ -340,24 +352,28 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
     new_island_fitnesses = [evaluate_genomes_return_fitness(pop, num_rounds)
                             for pop in new_island_populations]
 
-    # 迁移过程 (如果当前代数是迁移间隔的倍数)
+    # 迁移过程 (每代都迁移)
 
     for i in range(islands):
-        # 选择当前岛屿的最佳个体进行迁移
+        # 按适应度降序排列当前岛屿中的个体。
         sorted_indices = sorted(range(len(new_island_fitnesses[i])),
                               key=lambda k: new_island_fitnesses[i][k], reverse=True)
+        # 选择适应度最高的 'migration_size' 个 个体
         migrants_indices = sorted_indices[:migration_size]
         migrants = [new_island_populations[i][idx] for idx in migrants_indices]
 
-        # 将个体迁移到下一个岛屿(环形拓扑)
+        # 用模运算实现环形拓扑,将个体迁移到下一个岛屿
         target_island = (i + 1) % islands
 
         # 在目标岛屿中，替换最差的个体
+        # 适应度升序排序
         target_sorted_indices = sorted(range(len(new_island_fitnesses[target_island])),
                                      key=lambda k: new_island_fitnesses[target_island][k])
+        #  # 遍历从源岛屿选出的优秀迁移个体 'migrants' 列表。
         for j, migrant in enumerate(migrants):
             if j < len(target_sorted_indices):
                 replace_idx = target_sorted_indices[j]
+                # 替换掉目标岛屿中的较差个体
                 new_island_populations[target_island][replace_idx] = migrant
 
     # 重新评估迁移后的适应度
@@ -367,7 +383,9 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
     # 合并所有岛屿种群
     new_population = []
     new_fitnesses = []
+    # 配对迭代
     for pop, fit in zip(new_island_populations, new_island_fitnesses):
+        # 将当前岛屿所有个体添加到 'new_population' 总列表中。
         new_population.extend(pop)
         new_fitnesses.extend(fit)
 
@@ -381,28 +399,38 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
     return new_population, new_fitnesses
 
 
-# 差分进化算法实现
+# 差分进化算法实现(不使用)
 def differential_evolution(population, fitnesses, pop_size, F=0.8, CR=0.5, num_rounds=1000,
                            generation=0, max_generations=60):
     """
-    实现差分进化算法
+    实现差分进化算法 (Differential Evolution Algorithm)
 
-    参数：
-    - population: 当前种群
-    - fitnesses: 当前种群的适应度值
-    - pop_size: 种群规模
-    - F: 缩放因子(典型值:0.5-1.0)
-    - CR: 交叉概率(典型值:0.1-0.9)
-    - num_rounds: 评估轮数
+    差分进化是一种基于种群的全局优化算法，通过变异、交叉、选择三个步骤
+    不断改进种群质量，寻找问题的最优解。
 
-    - generation: 当前代数
-    - max_generations: 最大代数
+    算法特点：
+    - 利用种群个体间的差异信息指导搜索方向
+    - 自适应调整参数以平衡全局探索和局部开发
+    - 采用贪心选择策略确保种群质量单调提升
 
-    返回：
+    参数说明：
+    - population: 当前种群，二维列表，每个子列表代表一个个体的基因序列
+    - fitnesses: 当前种群的适应度值列表，数值越小表示个体越优秀（最小化问题）
+    - pop_size: 种群规模，即个体数量
+    - F: 缩放因子/变异因子 (典型值:0.5-1.0)
+         控制变异向量的步长大小，值越大变异幅度越大
+    - CR: 交叉概率 (典型值:0.1-0.9)
+          控制试验向量从变异向量继承基因的概率
+    - num_rounds: 适应度评估轮数，用于fitness函数的参数
+    - generation: 当前进化代数，用于参数自适应调整
+    - max_generations: 最大进化代数，用于计算进化进度
+
+    返回值：
     - new_population: 进化后的新种群
-    - new_fitnesses: 新种群的适应度
+    - new_fitnesses: 新种群对应的适应度值
     """
     # 动态调整F和CR参数
+    # progress_ratio需要＞0
     progress_ratio = generation / max_generations if max_generations > 0 else 0.5
     adaptive_F = F * (1.0 - 0.3 * progress_ratio)  # F从初始值逐渐降低30%
     adaptive_CR = min(0.9, CR + 0.3 * progress_ratio)  # CR从初始值逐渐增加，最大到0.9
@@ -477,13 +505,28 @@ def genetic_algorithm(pop_size, generations, num_rounds, elitism_ratio, tourname
     population = []
     for _ in range(pop_size):
         genome = []
-        # 引入更多随机性  怎么初始化?
+        # 引入更多随机性
+        """
+                        基于先验知识的种群初始化策略
+
+
+                        这里使用了一个优化手段,回顾基因的features = [
+                            score,  # 当前策略的子集得分
+                            removal_length,  # 匹配的移除长度
+                            new_length,  # A由于插入操作得到的新长度
+                            future_score,  # 未来得分
+                            sum_new_A,  # 匹配后新A的元素总和
+                            intersection_count,  # B与A的交集数量
+                        ]
+                        经过足够多的测试后 ，可以得出以下结论：
+                        score,future_score,  且score和future_score对于策略的影响较大 在1.5以上 
+        """
         if random.random() < 0.7:  # 70%的个体按原方式初始化
             for i in range(6):
-                if i == 0 or i == 3:
-                    genome.append(random.uniform(0, 2))
+                if i == 0 or i == 3 :
+                    genome.append(random.uniform(1.5, 2.5))
                 else:
-                    genome.append(random.uniform(-1, 1))
+                    genome.append(random.uniform(-0.5, 0.5))
         else:  # 30%的个体完全随机初始化
             for i in range(6):
                 # 用[-2,2]随机浮点数
@@ -547,10 +590,7 @@ def genetic_algorithm(pop_size, generations, num_rounds, elitism_ratio, tourname
             child = [gene + random.gauss(0, 0.5) if random.random() < mutation_rate else gene for gene in child]  # 变异
             next_population.append(child)  # 添加子代到下一代种群
 
-        # # 根据概率选择进化方法
-        # method_idx = np.random.choice(len(evolution_methods), p=method_probs)
-        # method = evolution_methods[method_idx]
-        # method_history.append(method)
+
 
         if len(best_fitness_history) > 1:
             improvement = best_fitness_history[-1] - best_fitness_history[-2]
@@ -558,20 +598,26 @@ def genetic_algorithm(pop_size, generations, num_rounds, elitism_ratio, tourname
                 method = method_history[-1]
                 print(f"改进率为 {improvement:.4f}，沿用方法：{method}")
             else:
-                method = np.random.choice(evolution_methods)
+                method = method_history[-1]
+                # 找到 现在方法 的索引
+                index_of_method_now = evolution_methods.index(method)
+
+                # 获取另一个方法
+                method = evolution_methods[1 - index_of_method_now]
+                #method = np.random.choice(evolution_methods)
                 print(f"改进率为 {improvement:.4f}，切换方法为：{method}")
         else:
-            method = np.random.choice(evolution_methods)
-            print(f"无历史改进数据，随机选择方法：{method}")
+            method = evolution_methods[0]
+            print(f"无历史改进数据，使用第一个方法：{method}")
 
         method_history.append(method)
 
         if method == 'standard':
             pass  # 使用标准遗传算法
         elif method == 'island':
-            next_population, _ = island_model_evolution(next_population, fitnesses, pop_size, tournament_size, 0.5, num_rounds, generation=gen, max_generations=generations)
-        elif method == 'de':
-            next_population, _ = differential_evolution(next_population, fitnesses, pop_size, F=0.8, CR=0.5, num_rounds=num_rounds, generation=gen, max_generations=generations)
+            next_population, _ = island_model_evolution(next_population, fitnesses, pop_size, tournament_size, 0.7, num_rounds, generation=gen, max_generations=generations)
+        # elif method == 'de':
+        #     next_population, _ = differential_evolution(next_population, fitnesses, pop_size, F=0.8, CR=0.5, num_rounds=num_rounds, generation=gen, max_generations=generations)
 
         population = next_population  # 更新种群
 
@@ -593,7 +639,7 @@ def save_best_genome(genome, filename="trained/best_genome.pkl"):
     # 打印基因组各特征的权重
     feature_names = [
         "当前得分", "移除长度", "新长度",  "未来得分",
-        "A元素总和",  "B与A交集数量"
+        "新A元素总和",  "B与A交集数量"
     ]
 
     print("\n基因组特征权重:")
@@ -629,14 +675,14 @@ def analyze_evolution_methods(best_fitness_history, method_history, all_methods)
 
 if __name__ == "__main__":
 
-    pop_size=1000
-    generations=30
+    pop_size=500
+    generations=20
     num_rounds=500
     elitism_ratio=0.1
     tournament_size=3
-    evolution_methods=['standard', 'island', 'de']
+    evolution_methods=['island','standard']
 
-    early_stop_generations=5
+    early_stop_generations=3
     early_stop_threshold=0.01
 
     genome = genetic_algorithm(pop_size,generations, num_rounds, elitism_ratio, tournament_size, evolution_methods, early_stop_generations, early_stop_threshold)  # 运行遗传算法获取最佳基因组
