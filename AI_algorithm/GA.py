@@ -101,10 +101,10 @@ def GA_Strategy(genome, A, B):
         #使用嵌套循环进行插入模拟  每一个插入位置都会计算6个特征
         for i, card in enumerate(B):
             remaining_B = [B[j] for j in range(len(B)) if j != i]
-            remaining_B_set = set([card] + remaining_B)
+            #remaining_B_set = set([card] + remaining_B)
             #特征计算
-            #打出的B的价值占
-            intersection_count = len(remaining_B_set & A_set)
+
+            B_card_proportion  = card/sum(remaining_B)
 
             # 插入位置以及特征集合
             all_features = []
@@ -122,7 +122,7 @@ def GA_Strategy(genome, A, B):
                     new_length,  # 新长度
                     future_score,  # 未来得分
                     sum_new_A,  # 匹配后新A的元素总和
-                    intersection_count,  # B与A的交集数量
+                    B_card_proportion,  # B的出牌占B剩余牌的价值比例
                 ]
 
                 all_features.append(features)
@@ -510,16 +510,8 @@ def genetic_algorithm(pop_size, generations, num_rounds, elitism_ratio, tourname
                         基于先验知识的种群初始化策略
 
 
-                        这里使用了一个优化手段,回顾基因的features = [
-                            score,  # 当前策略的子集得分
-                            removal_length,  # 匹配的移除长度
-                            new_length,  # A由于插入操作得到的新长度
-                            future_score,  # 未来得分
-                            sum_new_A,  # 匹配后新A的元素总和
-                            intersection_count,  # B与A的交集数量
-                        ]
-                        经过足够多的测试后 ，可以得出以下结论：
-                        score,future_score,  且score和future_score对于策略的影响较大 在1.5以上 
+                        这里使用了一个优化手段足够多的测试后 ，经过了足够多的测试后,可以得出以下结论：
+                        基因特征中,score,future_score,  且score和future_score对于策略的影响较大 在1.5以上 
         """
         if random.random() < 0.7:  # 70%的个体按原方式初始化
             for i in range(6):
@@ -639,7 +631,7 @@ def save_best_genome(genome, filename="trained/best_genome.pkl"):
     # 打印基因组各特征的权重
     feature_names = [
         "当前得分", "移除长度", "新长度",  "未来得分",
-        "新A元素总和",  "B与A交集数量"
+        "新A元素总和",  "出牌占B剩余牌的价值比例"
     ]
 
     print("\n基因组特征权重:")
