@@ -484,9 +484,9 @@ assist_count = 0
 
 
 
-genomeforassist = load_best_genome("../trained/best_genome.pkl")
+genomeforassist = load_best_genome("../trained/best_genome_skip.pkl")
 def Transformer(A, B):
-    # 加入专门预测低分的模型
+
     global assist_count
 
     num_a_test = 6 # <--- 修改
@@ -506,25 +506,15 @@ def Transformer(A, B):
 
 
 
-    model_path_1 = "../trained/transformer_move_predictor_6x3.pth" # <--- 修改
+    model_path_1 = "../trained/transformer_move_predictor_6x3_skip.pth" # <--- 修改
     model1.load_state_dict(torch.load(model_path_1, map_location=device))
     move1, _= Transformer_predict(A, B, model1, num_a=num_a_test, num_b=num_b_test)
 
-    # 加入对于极端值的缓存  但是目前由于可能性太多,命中不了
-    # result = cache_query.query(A, B)
-    # if result['hit']:
-    #     print(f"缓存命中! 最大分数: {result['max_score']}")
-    #     print(f"最佳移动: {result['best_moves']}")
-    #     # 直接返回极端值的缓存结果
-    #     return result['best_moves']
 
 
     # 如果要结合GA优化预测结果  则取消以下注释
     # score1=strategy_TrueScore(A,B,move1)
-    #
-    #
-    #
-    #
+
     # move2=GA_Strategy(genomeforassist,A, B)
     #
     # score2=strategy_TrueScore(A,B,move2)
@@ -550,4 +540,4 @@ if __name__ == "__main__":
 
 
 
-    Compare_TwoModel(genome,Transformer,rounds=1000,plot=True)
+    Compare_TwoModel(genome,Transformer,rounds=5000,plot=True)

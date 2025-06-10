@@ -15,6 +15,8 @@ def process_batch(batch_size, batch_id, output_file):
         A, B = deal_cards_tool()  # 初始A, B   A, B 都是 list<int>
         max_score, best_moves = recursive_StrategyAndScore(A, B)
 
+        if len(best_moves) != 3:
+            continue
         # 处理best_moves不足3个的情况
         current_rows = set(move[0] for move in best_moves)
         remaining = [i for i in whole if i not in current_rows]
@@ -86,7 +88,7 @@ def generate_training_data(num_samples=50000):
 
     # 合并所有批次文件
     print("合并批次文件...")
-    merge_batch_files(num_batches, "json/data_raw.json", temp_file_prefix)
+    merge_batch_files(num_batches, "json/data_Trans_skip.json", temp_file_prefix)
     print("数据集生成完成！")
 
 

@@ -27,11 +27,11 @@ def generate_training_data(num_samples=10000):
         # bestmoves的长度未必都是3  因为当B中就算再出牌也不能得分时 递归不会考虑加入移动到策略中
         # 大概占比num_samples的10%
         # if len(best_moves) != 3:
-        #     h+=1
-        #     print(f"跳过了len(best_moves)!=3的情况{h}次")
-        #     print(f"A:{A} B:{B}")
-        #
-        #     print(f"分数{max_score}, 最佳移动:{best_moves}")
+        #     # h+=1
+        #     # print(f"跳过了len(best_moves)!=3的情况{h}次")
+        #     # print(f"A:{A} B:{B}")
+        #     #
+        #     # print(f"分数{max_score}, 最佳移动:{best_moves}")
         #     continue
         #
         whole = [0, 1, 2]
@@ -46,7 +46,7 @@ def generate_training_data(num_samples=10000):
 
         dataset.append({"A": A, "B": B, "max_score": max_score, "best_moves": best_moves})
 
-    with open("json/data_raw2.json", "w") as f:
+    with open("json/data_GA_skip.json", "w") as f:
         json.dump(dataset, f, indent=4)
 
 

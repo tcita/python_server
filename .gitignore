@@ -1,4 +1,4 @@
-AI_algorithm/json/data_raw.json
+AI_algorithm/json/data_Trans_skip.json
 AI_algorithm/json/data_raw_2.json
 AI_algorithm/json/data_uniq.json
 AI_algorithm/json/normal_scores_uniq.json
@@ -6,3 +6,10 @@ AI_algorithm/json/normal_scores_uniq.jsonl
 AI_algorithm/json/data_uniq.jsonl
 AI_algorithm/json/data_raw2.json
 AI_algorithm/json/data2_uniq.json
+AI_algorithm/json/data_GA_skip.json
+AI_algorithm/json/data_GA_skip_uniq.json
+AI_algorithm/json/data_Trans_fill.jsonl
+AI_algorithm/json/data_GA_fill.json
+AI_algorithm/json/data_raw.json
+AI_algorithm/json/data_Trans_fill.json
+AI_algorithm/json/data_Trans_skip.jsonl

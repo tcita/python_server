@@ -23,7 +23,7 @@ def init_deck():
 # 在文件顶部添加全局缓存
 _json_cache = {}
 
-def deal_cards(json_file="AI_algorithm/json/data_uniq2.json", seed=None):
+def deal_cards(json_file="AI_algorithm/json/data_GA_skip.json", seed=None):
     # 如果提供了随机种子，设置随机数生成器
     if seed is not None:
         random.seed(seed)
@@ -623,7 +623,7 @@ def genetic_algorithm(pop_size, generations, num_rounds, elitism_ratio, tourname
     return best_genome  # 返回最佳基因组
 
 
-def save_best_genome(genome, filename="trained/best_genome.pkl"):
+def save_best_genome(genome, filename="trained/best_genome_skip.pkl"):
     with open(filename, 'wb') as file:
         pickle.dump(genome, file)  # 保存最佳基因组到文件
     print(f"Best genome saved to {filename}")  # 打印保存信息

@@ -6,7 +6,7 @@ import torch.nn as nn
 from AI_algorithm.tool.tool import calculate_score_by_strategy, calculate_future_score
 
 
-jsonfilename = "json/data_uniq.jsonl"
+jsonfilename = "json/data_Trans_skip.jsonl"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 if device.type == "cuda":
@@ -769,9 +769,9 @@ def train():
     # 调用 train_model 时传递固定长度，并使用新的模型路径
     # 观察训练拟合后可以手动结束训练
 
-    train_model(train_data, epochs=100, batch_size=8192, model_path="./trained/transformer_move_predictor_6x3.pth",
+    train_model(train_data, epochs=100, batch_size=2048, model_path="./trained/transformer_move_predictor_6x3_skip.pth",
                 num_a=6, num_b=3, warmup_epochs=5, lr_max=0.0005, lr_min=0.0000001,
-                patience=5, min_delta=0.01)
+                patience=2, min_delta=0.01)
 
 
 if __name__ == "__main__":

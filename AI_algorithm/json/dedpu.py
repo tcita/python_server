@@ -64,9 +64,14 @@ def deduplicate_dataset(dataset):
     return unique_samples
 
 # --- 主脚本执行部分 ---
+#
+# input_filename = "data_Trans_fill.json"
+# output_filename = "data_Trans_fill.json"  # 可以将结果保存到这个新文件
 
-input_filename = "data_raw2.json"
-output_filename = "data_uniq2.json"  # 可以将结果保存到这个新文件
+input_filename = "data_raw.json"
+output_filename = "data_Trans_skip.json"  # 可以将结果保存到这个新文件
+
+
 
 # 1. 检查输入文件是否存在
 if not os.path.exists(input_filename):
