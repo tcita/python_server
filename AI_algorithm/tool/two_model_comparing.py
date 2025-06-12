@@ -5,18 +5,15 @@ import torch
 from scipy import stats
 
 
-from sympy import false
 
-from AI_algorithm.Deep_Neural_Network import  DNNpredict
+
 from AI_algorithm.GA import  GA_Strategy
 
 import matplotlib.pyplot as plt
 
 from AI_algorithm.Trans import TransformerMovePredictor, Transformer_predict
-
 from AI_algorithm.brute_force import recursive_StrategyAndScore
-from AI_algorithm.server import load_model_from_memory
-from AI_algorithm.tool.Get_cache import FastCacheQuery
+
 from AI_algorithm.tool.tool import load_best_genome, deal_cards_tool, simulate_insertion_tool
 
 
@@ -506,8 +503,13 @@ def Transformer(A, B):
 
 
 
+
     model_path_1 = "../trained/transformer_move_predictor_6x3_skip.pth" # <--- 修改
     model1.load_state_dict(torch.load(model_path_1, map_location=device))
+
+    # A_batch = []
+    # B_batch = []
+    # move1, _Transformer_predict_batch(A_batch, B_batch, model1, num_a=num_a_test, num_b=num_b_test)
     move1, _= Transformer_predict(A, B, model1, num_a=num_a_test, num_b=num_b_test)
 
 

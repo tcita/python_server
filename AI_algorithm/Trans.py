@@ -1,10 +1,14 @@
 import json
 import math
+import time
+
 import torch
 import torch.nn as nn
 
-from AI_algorithm.tool.tool import calculate_score_by_strategy, calculate_future_score
-
+from AI_algorithm.GA import GA_Strategy
+from AI_algorithm.brute_force import recursive_Strategy
+from AI_algorithm.tool.tool import calculate_score_by_strategy, calculate_future_score, load_best_genome, \
+    deal_cards_tool, strategy_TrueScore
 
 jsonfilename = "json/data_Trans_skip.jsonl"
 
@@ -541,7 +545,11 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
         return default_strategy, default_score
 
 
-def Transformer_predict_batch(A_batch, B_batch, model, num_a=6, num_b=3, device='cuda'):
+
+#需要检查
+
+
+def Transformer_predict_batch_plus_GA(A_batch, B_batch,genomeforassist, TR_model, num_a=6, num_b=3, device='cuda'):
     """
     批量使用训练好的 Transformer 模型进行预测 (针对 A=6, B=3)。
 
@@ -562,10 +570,10 @@ def Transformer_predict_batch(A_batch, B_batch, model, num_a=6, num_b=3, device=
         scores_batch = []
 
         # 检查模型类型
-        if not isinstance(model, TransformerMovePredictor):
-            raise ValueError(f"需要 TransformerMovePredictor 实例, 但得到 {type(model)}")
+        if not isinstance(TR_model, TransformerMovePredictor):
+            raise ValueError(f"需要 TransformerMovePredictor 实例, 但得到 {type(TR_model)}")
 
-        model.eval()
+        TR_model.eval()
 
         # 分类样本：快速路径和需要模型推理的
         fast_path_indices = []
@@ -670,7 +678,7 @@ def Transformer_predict_batch(A_batch, B_batch, model, num_a=6, num_b=3, device=
 
         # 批量推理
         with torch.no_grad():
-            order_logits, pos_preds = model(input_tensor)
+            order_logits, pos_preds = TR_model(input_tensor)
 
         # 处理每个样本的结果
         for batch_idx, original_idx in enumerate(model_inference_indices):
@@ -688,16 +696,24 @@ def Transformer_predict_batch(A_batch, B_batch, model, num_a=6, num_b=3, device=
             pos_range_base = len(A)
             pred_moves_clipped = [int(np.clip(p, 0, pos_range_base + k)) for k, p in enumerate(pred_moves_raw)]
 
-            best_moves = [[int(pred_order_indices[k]), pred_moves_clipped[k]] for k in range(num_b)]
+            moves_TR = [[int(pred_order_indices[k]), pred_moves_clipped[k]] for k in range(num_b)]
 
-            # final_order = [move[0] for move in best_moves]
-            # final_moves = [move[1] for move in best_moves]
 
-            # pred_score = calculate_score(A, B, final_order, final_moves)
-
-            # 保存结果
-            moves_batch[original_idx] = best_moves
-            # scores_batch[original_idx] = pred_score
+            # #加入GA
+            # True_score_TR=strategy_TrueScore(A,B,moves_TR)
+            #
+            # move_GA=GA_Strategy(genomeforassist,A, B)
+            #
+            # True_score_GA=strategy_TrueScore(A,B,move_GA)
+            #
+            #
+            # # 比较并保存结果
+            # if True_score_GA<True_score_TR:
+            #
+            #     moves_batch[original_idx] = moves_TR
+            # # scores_batch[original_idx] = pred_score
+            # else:
+            #     moves_batch[original_idx] = move_GA
 
         return moves_batch
 
@@ -774,5 +790,81 @@ def train():
                 patience=2, min_delta=0.01)
 
 
+def speed_test():
+    total_time_transformer = 0
+    total_time_recursive = 0
+    num_iterations = 10000  # 迭代次数
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Starting comparison for {num_iterations} iterations...")
+    num_a_test = 6  # <--- 修改
+    num_b_test = 3
+    # 确保这些参数与训练时一致
+    d_model = 256
+    nhead = 4
+    num_encoder_layers = 3
+    dim_feedforward = 512
+    dropout = 0.1
+
+    model1 = TransformerMovePredictor(
+        num_a=num_a_test, num_b=num_b_test, d_model=d_model,
+        nhead=nhead, num_encoder_layers=num_encoder_layers,
+        dim_feedforward=dim_feedforward
+    ).to(device)
+
+    A_batch = []
+    B_batch = []
+
+    model_path_1 = "./trained/transformer_move_predictor_6x3_skip.pth"
+
+    genomeforassist = load_best_genome("./trained/best_genome_skip.pkl")
+
+    model1.load_state_dict(torch.load(model_path_1, map_location=device))
+    for i in range(num_iterations):
+        A, B = deal_cards_tool()
+        A_batch.append(A)
+        B_batch.append(B)
+
+        A_copy = list(A)
+        B_copy = list(B)
+        start_time_r = time.perf_counter()
+        move_r = recursive_Strategy(A_copy, B_copy)
+        end_time_r = time.perf_counter()
+        total_time_recursive += (end_time_r - start_time_r)
+
+    start_time_t = time.perf_counter()
+    move_t = Transformer_predict_batch_plus_GA(A_batch, B_batch,genomeforassist, model1, num_a=num_a_test, num_b=num_b_test)
+
+    # 模拟将得到的列表中的元素取出操作
+    for item in move_t:
+        print(" ")
+
+
+
+    end_time_t = time.perf_counter()
+    total_time_transformer += (end_time_t - start_time_t)
+
+    #
+    # # 打开文件并逐行写入
+    # with open("output.txt", "w", encoding="utf-8") as file:
+    #     for row in move_t:
+    #         file.write(" ".join(map(str, row)) + "\n")  # 每行用空格分隔
+
+    # --- 报告结果 ---
+    print("\n--- Comparison Complete ---")
+    print(f"Total time for Transformer:      {total_time_transformer:.6f} seconds")
+
+    print(f"Total time for recursive_Strategy: {total_time_recursive:.6f} seconds")
+
+    if num_iterations > 0:
+        avg_time_transformer = total_time_transformer / num_iterations
+        print(f"\nAverage time per call (Transformer):      {avg_time_transformer:.8f} seconds")
+
+        avg_time_recursive = total_time_recursive / num_iterations
+        print(f"Average time per call (recursive_Strategy): {avg_time_recursive:.8f} seconds")
+
+
 if __name__ == "__main__":
-    train()
+    # train()
+
+    speed_test()

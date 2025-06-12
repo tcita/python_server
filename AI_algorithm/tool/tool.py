@@ -4,7 +4,40 @@ import random
 import numpy as np
 import torch
 
+def strategy_TrueScore(A, B, strategy):
+    try:
+        # 第一步插入
+        score1, _, _, _, A = simulate_insertion_tool(
+            A,
+            B[strategy[0][0]],
+            min(len(A), strategy[0][1]))
 
+        # print(f"1. 将 {B[strategy[0][0]]} 插入A<{strategy[0][1]}>号位  得分: {score1}    A变为{A}")
+
+        # 第二步插入
+        score2, _, _, _, A = simulate_insertion_tool(
+            A,
+            B[strategy[1][0]],
+            min(len(A),strategy[1][1])
+        )
+        # print(f"2. 将 {B[strategy[1][0]]} 插入A<{strategy[1][1]}>号位  得分: {score2}    A变为{A}")
+
+        # 第三步插入
+        score3, _, _, _, A = simulate_insertion_tool(
+            A,
+            B[strategy[2][0]],
+           min(len(A),strategy[2][1]))
+
+        # print(f"3. 将 {B[strategy[2][0]]} 插入A<{strategy[2][1]}>号位  得分: {score3}    A变为{A}")
+
+        return score1 + score2 + score3
+
+    except IndexError as e:
+
+        print("相关变量的值：")
+        print(f"strategy: {strategy}")
+        print(f"A: {A}")
+        print(f"B: {B}")
 def simulate_insertion_tool(A, b, pos):
     """
     将元素b插入到列表A的指定位置pos，并处理可能发生的匹配情况。
