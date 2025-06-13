@@ -698,22 +698,25 @@ def Transformer_predict_batch_plus_GA(A_batch, B_batch,genomeforassist, TR_model
 
             moves_TR = [[int(pred_order_indices[k]), pred_moves_clipped[k]] for k in range(num_b)]
 
-
+            # ----------------------------------------------------------------------------------------------------------
             # todo: ⚠️这个代码块集成了GA,不需要时注释⚠️
-            True_score_TR=strategy_TrueScore(A,B,moves_TR)
 
-            move_GA=GA_Strategy(genomeforassist,A, B)
+            # True_score_TR=strategy_TrueScore(A,B,moves_TR)
+            #
+            # move_GA=GA_Strategy(genomeforassist,A, B)
+            #
+            # True_score_GA=strategy_TrueScore(A,B,move_GA)
+            #
+            #
+            # # 比较并保存结果
+            # if True_score_GA<True_score_TR:
+            #
+            #     moves_batch[original_idx] = moves_TR
+            # # scores_batch[original_idx] = pred_score
+            # else:
+            #     moves_batch[original_idx] = move_GA
 
-            True_score_GA=strategy_TrueScore(A,B,move_GA)
-
-
-            # 比较并保存结果
-            if True_score_GA<True_score_TR:
-
-                moves_batch[original_idx] = moves_TR
-            # scores_batch[original_idx] = pred_score
-            else:
-                moves_batch[original_idx] = move_GA
+            #----------------------------------------------------------------------------------------------------------
 
         return moves_batch
 
