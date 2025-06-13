@@ -8,7 +8,7 @@ import json
 import os
 import torch
 
-from AI_algorithm.tool.tool import calculate_future_score, simulate_insertion_tool
+from tool.tool import calculate_future_score, simulate_insertion_tool
 
 
 # ---------------------------

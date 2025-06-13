@@ -5,9 +5,9 @@ import time
 import torch
 import torch.nn as nn
 
-from AI_algorithm.GA import GA_Strategy
-from AI_algorithm.brute_force import recursive_Strategy
-from AI_algorithm.tool.tool import calculate_score_by_strategy, calculate_future_score, load_best_genome, \
+from GA import GA_Strategy
+from brute_force import recursive_Strategy
+from tool.tool import calculate_score_by_strategy, calculate_future_score, load_best_genome, \
     deal_cards_tool, strategy_TrueScore
 
 jsonfilename = "json/data_Trans_skip.jsonl"
@@ -733,7 +733,7 @@ def Transformer_predict_batch_plus_GA(A_batch, B_batch,genomeforassist, TR_model
             A = A_batch[i]
             B = B_batch[i]
             default_strategy = [[j, 1] for j in range(len(B))]
-            default_score = calculate_score_by_strategy(A, B, default_strategy)
+            # default_score = calculate_score_by_strategy(A, B, default_strategy)
             moves_batch.append(default_strategy)
             # scores_batch.append(default_score)
 

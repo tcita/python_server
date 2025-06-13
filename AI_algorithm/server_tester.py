@@ -1,6 +1,9 @@
 import requests
 import json
 
+from AI_algorithm.brute_force import recursive_Strategy
+from AI_algorithm.tool.tool import deal_cards_tool, strategy_TrueScore
+
 # URL of the server endpoint you created
 SERVER_URL = "http://127.0.0.1:5000/predict"
 
@@ -11,9 +14,11 @@ def test_prediction_server():
     """
     # Prepare a static, valid payload to ensure the test is repeatable.
     # The server expects A to have 6 cards and B to have 3 cards.
+    A,B=deal_cards_tool()
+
     payload = {
-        "A": [2, 4, 6, 8, 10, 12],
-        "B": [4, 7, 10]
+        "A": A,
+        "B": B
     }
 
     print("Sending the following payload to the server:")
@@ -36,6 +41,14 @@ def test_prediction_server():
                 predicted_move = result.get("predicted_move")
                 print("\nPredicted Strategy (move):")
                 print(predicted_move)
+
+                score_by_predict = strategy_TrueScore(A, B, predicted_move)
+                best_move=recursive_Strategy(A, B)
+                print("The recursive strategy(move):",best_move)
+                best_score=strategy_TrueScore(A, B, best_move)
+
+                print("The score of the predicted strategy:",score_by_predict)
+                print("The score of the recursive strategy:",best_score)
             else:
                 print("\n⚠️ Server reported success=false.")
 
