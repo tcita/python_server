@@ -808,7 +808,7 @@ def black_hole(value):
 
     """
 
-这里使用了一个小技巧,使用"black_hole"函数修改一个全局变量来保证解释器不会优化未使用的函数。
+这里使用了一个小技巧,使用"black_hole"函数修改一个全局变量来保证解释器不会优化未使用的函数。 防止计算运行时间时不准确
 
 
     """
@@ -818,20 +818,19 @@ def black_hole(value):
     _BLACK_HOLE_SINK = value
 
 
-
 def execution_time():
 
     total_time_transformer = 0
 
     total_time_recursive = 0
 
-    num_iterations = 1000  # 迭代次数
+    num_iterations = 10000  # 迭代次数
 
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    print(f"Starting comparison for {num_iterations} iterations...")
     # transformer预测初始化
+
     num_a_test = 6
 
     num_b_test = 3
@@ -862,15 +861,17 @@ def execution_time():
 
     B_batch = []
 
-
+    test_cases=[]
 
 
     # 辅助GA模型载入
     genomeforassist = load_best_genome("./trained/best_genome.pkl")
 
+    ## Transformer模型载入
     model_path_1 = "./trained/transformer_move_predictor_6x3.pth"
     model1.load_state_dict(torch.load(model_path_1, map_location=device))
 
+    # A,B数据准备
     for i in range(num_iterations):
 
         A, B = deal_cards_tool()
@@ -880,21 +881,11 @@ def execution_time():
         B_batch.append(B)
 
 
-        A_copy = list(A)
+        test_cases.append((list(A), list(B)))
 
-        B_copy = list(B)
 
-        start_time_r = time.perf_counter()
+#计算Transform+GA 预测 运行的时间--------------------------------------------------------------
 
-        move_r = recursive_Strategy(A_copy, B_copy)
-
-        black_hole(move_r)
-
-        end_time_r = time.perf_counter()
-
-        total_time_recursive += (end_time_r - start_time_r)
-
-    # 计算Transform+GA 预测 运行的时间--------------------------------------------------------------
     start_time_t = time.perf_counter()
 
     move_t = Transformer_predict_batch_plus_GA(A_batch, B_batch,genomeforassist, model1, num_a=num_a_test, num_b=num_b_test)
@@ -903,34 +894,40 @@ def execution_time():
     # 因为得到的返回值move是批次的(列表),这里模拟将得到的列表中的元素取出操作消耗的时间
 
     for item in move_t:
-        print(item)
+        black_hole(item)
 
 
     end_time_t = time.perf_counter()
 
-    total_time_transformer += (end_time_t - start_time_t)
-    # --------------------------------------------------------------------------------------------
 
+
+    total_time_transformer += (end_time_t - start_time_t)
+#--------------------------------------------------------------------------------------------
+
+
+#递归穷举运行的时间-----------------------------------------------------------------------------
+    start_time_r = time.perf_counter()
+
+    for A_copy, B_copy in test_cases:
+        move_r = recursive_Strategy(A_copy, B_copy)
+
+#保证解释器不优化未使用的move_r
+        black_hole(move_r)
+
+    end_time_r = time.perf_counter()
+
+    total_time_recursive += (end_time_r - start_time_r)
+#--------------------------------------------------------------------------------------------
 
 
     print("\n--- Comparison Complete ---")
 
-    print(f"Total time for Transformer:      {total_time_transformer:.6f} seconds")
+    print(f"Total time for Transformer+GA:      {total_time_transformer:.6f} seconds")
 
 
     print(f"Total time for recursive_Strategy: {total_time_recursive:.6f} seconds")
 
 
-    if num_iterations > 0:
-
-        avg_time_transformer = total_time_transformer / num_iterations
-
-        print(f"\nAverage time per call (Transformer):      {avg_time_transformer:.8f} seconds")
-
-
-        avg_time_recursive = total_time_recursive / num_iterations
-
-        print(f"Average time per call (recursive_Strategy): {avg_time_recursive:.8f} seconds")
 
 
 
