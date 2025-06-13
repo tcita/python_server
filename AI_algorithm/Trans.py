@@ -566,8 +566,8 @@ def Transformer_predict_batch_plus_GA(A_batch, B_batch,genomeforassist, TR_model
     """
     try:
         batch_size = len(A_batch)
-        moves_batch = []
-        scores_batch = []
+        # moves_batch = []
+        # scores_batch = []
 
         # 检查模型类型
         if not isinstance(TR_model, TransformerMovePredictor):
@@ -596,16 +596,16 @@ def Transformer_predict_batch_plus_GA(A_batch, B_batch,genomeforassist, TR_model
 
         # 初始化结果列表，使其长度与batch_size相同
         moves_batch = [None] * batch_size
-        scores_batch = [None] * batch_size
+        # scores_batch = [None] * batch_size
 
         # 处理快速路径样本
         for idx in fast_path_indices:
             moves_batch[idx] = [[0, 0], [1, 0], [2, 0]]
-            scores_batch[idx] = 0
+            # scores_batch[idx] = 0
 
         # 如果没有需要模型推理的样本，直接返回
         if not model_inference_indices:
-            return moves_batch, scores_batch
+            return moves_batch
 
         # 准备模型推理的批量数据
         all_features = []
@@ -698,23 +698,23 @@ def Transformer_predict_batch_plus_GA(A_batch, B_batch,genomeforassist, TR_model
 
             moves_TR = [[int(pred_order_indices[k]), pred_moves_clipped[k]] for k in range(num_b)]
 
+            True_score_TR = strategy_TrueScore(A, B, moves_TR)
             # ----------------------------------------------------------------------------------------------------------
-            # todo: ⚠️这个代码块集成了GA,不需要时注释⚠️
+            # todo: ⚠️这个代码块集成了GA⚠️
 
-            # True_score_TR=strategy_TrueScore(A,B,moves_TR)
-            #
-            # move_GA=GA_Strategy(genomeforassist,A, B)
-            #
-            # True_score_GA=strategy_TrueScore(A,B,move_GA)
-            #
-            #
-            # # 比较并保存结果
-            # if True_score_GA<True_score_TR:
-            #
-            #     moves_batch[original_idx] = moves_TR
-            # # scores_batch[original_idx] = pred_score
-            # else:
-            #     moves_batch[original_idx] = move_GA
+
+            move_GA=GA_Strategy(genomeforassist,A, B)
+
+            True_score_GA=strategy_TrueScore(A,B,move_GA)
+
+
+            # 比较并保存结果
+            if True_score_GA<True_score_TR:
+
+                moves_batch[original_idx] = moves_TR
+
+            else:
+                moves_batch[original_idx] = move_GA
 
             #----------------------------------------------------------------------------------------------------------
 
@@ -728,16 +728,16 @@ def Transformer_predict_batch_plus_GA(A_batch, B_batch,genomeforassist, TR_model
 
         # 对于错误情况，为每个样本返回默认策略
         moves_batch = []
-        scores_batch = []
+        # scores_batch = []
         for i in range(batch_size):
             A = A_batch[i]
             B = B_batch[i]
             default_strategy = [[j, 1] for j in range(len(B))]
             default_score = calculate_score_by_strategy(A, B, default_strategy)
             moves_batch.append(default_strategy)
-            scores_batch.append(default_score)
+            # scores_batch.append(default_score)
 
-        return moves_batch, scores_batch
+        return moves_batch
 _json_cache = {}
 
 
@@ -823,7 +823,7 @@ def black_hole(value):
 
 def execution_time():
 
-    total_time_transformer = 0
+    total_time_transformer_P_GA = 0
 
     total_time_recursive = 0
 
@@ -904,9 +904,18 @@ def execution_time():
 
 
 
-    total_time_transformer += (end_time_t - start_time_t)
-#--------------------------------------------------------------------------------------------
+    total_time_transformer_P_GA += (end_time_t - start_time_t)
+#GA算法运行的时间 -----------------------------------------------------------------------------
+    total_time_GA=0
+    start_time_g = time.perf_counter()
+    for A_copy, B_copy in test_cases:
+        move_GA = GA_Strategy(genomeforassist, A_copy, A_copy)
 
+        # 保证解释器不优化未使用的move_GA
+        black_hole(move_GA)
+    end_time_g = time.perf_counter()
+
+    total_time_GA += (end_time_g - start_time_g)
 
 #递归穷举运行的时间-----------------------------------------------------------------------------
     start_time_r = time.perf_counter()
@@ -923,10 +932,14 @@ def execution_time():
 #--------------------------------------------------------------------------------------------
 
 
+
+
+
+
     print("\n--- Comparison Complete ---")
 
-    print(f"Total time for Transformer+GA:      {total_time_transformer:.6f} seconds")
-
+    print(f"Total time for Transformer+GA:      {total_time_transformer_P_GA:.6f} seconds")
+    print(f"Total time for GA: {total_time_GA:.6f} seconds")
 
     print(f"Total time for recursive_Strategy: {total_time_recursive:.6f} seconds")
 
