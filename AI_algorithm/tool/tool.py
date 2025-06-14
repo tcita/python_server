@@ -121,7 +121,7 @@ def simulate_insertion_tool(A, b, pos):
 def init_deck_tool():
     return [i for i in range(1, 14) for _ in range(4)]
 
- # 不应该使用无法得分的A,B训练
+
 def deal_cards_tool():
     deck = init_deck_tool()
     random.shuffle(deck)

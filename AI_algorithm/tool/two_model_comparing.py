@@ -481,7 +481,7 @@ assist_count = 0
 
 
 
-genomeforassist = load_best_genome("../trained/best_genome_skip.pkl")
+genomeforassist = load_best_genome("../trained/best_genome.pkl")
 def Transformer(A, B):
 
     global assist_count
@@ -504,7 +504,7 @@ def Transformer(A, B):
 
 
 
-    model_path_1 = "../trained/transformer_move_predictor_6x3_skip.pth" # <--- 修改
+    model_path_1 = "../trained/transformer_move_predictor_6x3.pth" # <--- 修改
     model1.load_state_dict(torch.load(model_path_1, map_location=device))
 
     # A_batch = []
@@ -542,4 +542,4 @@ if __name__ == "__main__":
 
 
 
-    Compare_TwoModel(genome,Transformer,rounds=5000,plot=True)
+    Compare_TwoModel(genome,Transformer,rounds=20000,plot=True)
