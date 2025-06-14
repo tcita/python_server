@@ -223,24 +223,7 @@ def evaluate_genome(genome, num_rounds, seed_base):
     print(f"基因组平均得分: {mean_score}")
 
     return mean_score  # 返回平均得分
-# def evaluate_genomes_return_fitness(population, num_rounds=1000):
-#
-#
-#
-#     fitnesses = []
-#
-#
-#     for genome in population:
-#         try:
-#             # print(f"正在评估第 {population.index(genome) + 1} /{len(population)}个基因组")
-#             fitness = evaluate_genome(genome, num_rounds)
-#
-#             fitnesses.append(fitness)
-#         except Exception as e:
-#             print(f"基因组 {genome} 评估发生异常: {e}")
-#             fitnesses.append(-float('inf'))
-#
-#     return fitnesses
+
 
 
 import functools  # <== 在文件顶部导入
@@ -505,7 +488,7 @@ def genetic_algorithm(pop_size, generations, num_rounds, elitism_ratio, tourname
 
 
                         这里使用了一个优化手段足够多的测试后 ，经过了足够多的测试后,可以得出以下结论：
-                        基因特征中,score,future_score,  且score和future_score对于策略的影响较大 在1.5以上 
+                        基因特征中,score和future_score对于策略的正面影响较大 在1.5以上 
         """
         if random.random() < 0.7:  # 70%的个体按原方式初始化
             for i in range(6):
@@ -528,6 +511,7 @@ def genetic_algorithm(pop_size, generations, num_rounds, elitism_ratio, tourname
     last_best_fitness = -float('inf')
 
     for gen in range(generations):  # 迭代每个世代
+        print(f"\n--- [Generation {gen + 1}/{generations}] Evaluating population... ---")
         fitnesses = evaluate_genomes_return_fitness(population, num_rounds)  # 评估种群适应度
         gen_best, gen_avg = max(fitnesses), np.mean(fitnesses)  # 获取当前世代的最佳适应度和平均适应度
         best_fitness_history.append(gen_best)  # 记录最佳适应度
@@ -601,7 +585,7 @@ def genetic_algorithm(pop_size, generations, num_rounds, elitism_ratio, tourname
         if method == 'standard':
             pass  # 使用标准遗传算法
         elif method == 'island':
-            next_population= island_model_evolution(next_population, fitnesses, pop_size, tournament_size, 0.7, num_rounds, generation=gen, max_generations=generations)
+            next_population= island_model_evolution(next_population, fitnesses, pop_size, tournament_size, 0.7)
         # elif method == 'de':
         #     next_population, _ = differential_evolution(next_population, fitnesses, pop_size, F=0.8, CR=0.5, num_rounds=num_rounds, generation=gen, max_generations=generations)
 

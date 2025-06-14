@@ -208,8 +208,8 @@ def prepare_data_transformer(sample: dict, num_a=6, num_b=3):
             is_extreme,  # 是否是极值
             z_score,#该值与均值之间的距离
             relative_position,  # 该元素在A中的相对位置
-            min_max_scaled,  #将一个值的原始位置，等比例地映射到 [0, 1] 区间
-            intersection_size  # A与B交集大小
+            min_max_scaled,  #将一个值等比例地映射到 [0, 1] 区间
+            intersection_size/num_a  # A与B交集大小
         ])
 
     # 处理B序列
@@ -509,7 +509,7 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
                 z_score,  # 该值与均值之间的距离
                 relative_position,  # 该元素在A中的相对位置
                 min_max_scaled,  # 将一个值的原始位置，等比例地映射到 [0, 1] 区间
-                intersection_size  # A与B交集大小
+                intersection_size/num_a  # A与B交集大小占A元素数的比例
             ])
 
         # 处理B序列
@@ -684,7 +684,7 @@ def Transformer_predict_batch_plus_GA(A_batch, B_batch,genomeforassist, TR_model
                     z_score,  # 该值与均值之间的距离
                     relative_position,  # 该元素在A中的相对位置
                     min_max_scaled,  # 将一个值的原始位置，等比例地映射到 [0, 1] 区间
-                    intersection_size  # A与B交集大小
+                    intersection_size/num_a  # A与B交集大小
                 ])
 
             # 处理B序列
