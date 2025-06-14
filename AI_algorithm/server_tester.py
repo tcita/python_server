@@ -5,7 +5,7 @@ from AI_algorithm.brute_force import recursive_Strategy
 from AI_algorithm.tool.tool import deal_cards_tool, strategy_TrueScore
 
 # URL of the server endpoint you created
-SERVER_URL = "http://127.0.0.1:5000/predict"
+SERVER_URL = "http://0.0.0.0:5000/predict"
 
 
 def test_prediction_server():
