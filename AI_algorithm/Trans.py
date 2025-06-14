@@ -10,7 +10,13 @@ from brute_force import recursive_Strategy
 from tool.tool import calculate_score_by_strategy, calculate_future_score, load_best_genome, \
     deal_cards_tool, strategy_TrueScore
 
-jsonfilename = "json/data_Trans_skip.jsonl"
+# Todo 注意训练前的路径!!!
+jsonfile_path = "json/data_Trans_fill.jsonl"
+trans_path="./trained/transformer_move_predictor_6x3.pth"
+
+# jsonfil_path = "json/data_Trans_skip.jsonl"
+# trans_path="./trained/transformer_move_predictor_6x3_skip.pth"
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 if device.type == "cuda":
@@ -145,7 +151,7 @@ def sample_order(logits, temperature=1.0):
 
 def prepare_data_transformer(sample: dict, num_a=6, num_b=3):
     """
-    数据预处理：构建输入序列和目标输出，添加修改后的特征工程。
+    数据预处理：构建输入序列和目标输出，添加特征工程。
     """
 
 
@@ -157,8 +163,8 @@ def prepare_data_transformer(sample: dict, num_a=6, num_b=3):
         print(f"Warning: Skipping sample with A={A}, B={B} due to unexpected length (expected A:{num_a}, B:{num_b}).")
         return None, None, None
 
-    # 新增特征计算
-    A_sum = sum(A)  # A序列的和
+
+
 
 
     # 计算B序列中重复的元素数
@@ -179,20 +185,31 @@ def prepare_data_transformer(sample: dict, num_a=6, num_b=3):
     # 创建增强的输入序列
     enhanced_sequence = []
 
+    A_min = min(A)
+    A_max = max(A)
+    B_min = min(B)
+    B_max = max(B)
+    A_mean = np.mean(A)
+    A_std = np.std(A)
+    # B_mean = np.mean(B)
+    # B_std = np.std(B)
     # 处理A序列
     for i, val in enumerate(A):
-        is_in_intersection = 1.0 if val in intersection else 0.0
-        relative_position = i / num_a
-        relative_size = val / A_sum if A_sum != 0 else 0  # 使用与总和的比例代替相对大小
-        intersection_ratio = intersection_size / num_b
 
+        relative_position = i / num_a
+
+        # z_score = (val - A_mean) / A_std if A_std > 0 else 0.0
+        range_size = A_max - A_min
+        min_max_scaled = (val - A_min) / range_size if range_size > 0 else 0.0
+        is_extreme = 1.0 if (val == A_min or val == A_max) else 0.0
+        z_score = (val - A_mean) / A_std if A_std > 0 else 0.0
         enhanced_sequence.append([
-            val,  # 原始值
-            val / A_sum if A_sum != 0 else 0,  # 值占A总和的比例
-            is_in_intersection,  # 是否在交集中
-            relative_position,  # 相对位置
-            relative_size,  # 相对大小（占总和的比例）
-            intersection_ratio  # 交集大小比例
+            val/sum(A),  # 本身的值占A的元素总和的比例
+            is_extreme,  # 是否是极值
+            z_score,#该值与均值之间的距离
+            relative_position,  # 该元素在A中的相对位置
+            min_max_scaled,  #将一个值的原始位置，等比例地映射到 [0, 1] 区间
+            intersection_size  # A与B交集大小
         ])
 
     # 处理B序列
@@ -200,8 +217,9 @@ def prepare_data_transformer(sample: dict, num_a=6, num_b=3):
         is_in_A = 1.0 if val in A else 0.0
         position_in_A = positions_in_A.get(val, -1)
         relative_position_in_A = position_in_A / num_a if position_in_A >= 0 else -0.1
-        # relative_size = val / B_sum if B_sum != 0 else 0  # 使用与总和的比例
 
+        is_extreme = 1.0 if (val == B_min or val == B_max) else 0.0
+        # z_score = (val - B_mean) / B_std if B_std > 0 else 0.0
         # 计算未来得分特征
         # 假设当前B[i]已经被处理，计算剩余B的未来得分
         remaining_B = B[i + 1:] if i < len(B) - 1 else []
@@ -209,15 +227,15 @@ def prepare_data_transformer(sample: dict, num_a=6, num_b=3):
         future_score_ratio = future_score / (sum(A) + sum(B)) if (sum(A) + sum(B)) > 0 else 0
 
         enhanced_sequence.append([
-            val,  # 原始值
-            # val / B_sum if B_sum != 0 else 0,  # 值占B总和的比例
-            future_score_ratio,  # 新增：未来得分比例
+            val/sum(B),  # 本身的值占B的元素总和的比例
+
+            future_score_ratio,  # 未来得分占可能的最大得分(全部消除)的占比
 
             is_in_A,  # 是否在A中
-            relative_position_in_A,  # 在A中的相对位置（如果存在）
-            B_duplicates / num_b,  # B中重复元素的比例
+            relative_position_in_A,  # 该值在A中的相对位置（不存在为-0.1）
+            B_duplicates / num_b,  # B中重复元素占所有B元素数的比例
 
-            intersection_ratio  # 交集大小比例
+            is_extreme  # 是否是极值
         ])
 
     # 将序列转换为numpy数组
@@ -450,22 +468,17 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
         if len(A) != num_a or len(B) != num_b:
             raise ValueError(f"DNNpredict 期望输入 A 长度为 {num_a}, B 长度为 {num_b}, 但收到 A:{len(A)}, B:{len(B)}")
 
-        # 应用新的特征工程
-        # 1. 计算序列和
-        A_sum = sum(A)
-        # B_sum = sum(B)
-
-        # 2. 计算B序列中重复的元素数
+       # 特征计算  与prepare_data_transformer函数相同
         B_counter = {}
         for val in B:
             B_counter[val] = B_counter.get(val, 0) + 1
-        B_duplicates = sum(count - 1 for count in B_counter.values())
+        B_duplicates = sum(count - 1 for count in B_counter.values())  # 重复的元素数
 
-        # 3. 交集特征
+        # 交集特征
         intersection = set(A) & set(B)
         intersection_size = len(intersection)
 
-        # 4. 位置特征
+        # 位置特征
         positions_in_A = {}
         for i, a_val in enumerate(A):
             positions_in_A[a_val] = i
@@ -473,20 +486,30 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
         # 创建增强的输入序列
         enhanced_sequence = []
 
+        A_min = min(A)
+        A_max = max(A)
+        B_min = min(B)
+        B_max = max(B)
+        A_mean = np.mean(A)
+        A_std = np.std(A)
+        # B_mean = np.mean(B)
+        # B_std = np.std(B)
         # 处理A序列
         for i, val in enumerate(A):
-            is_in_intersection = 1.0 if val in intersection else 0.0
             relative_position = i / num_a
-            relative_size = val / A_sum if A_sum != 0 else 0
-            intersection_ratio = intersection_size / num_b
 
+            # z_score = (val - A_mean) / A_std if A_std > 0 else 0.0
+            range_size = A_max - A_min
+            min_max_scaled = (val - A_min) / range_size if range_size > 0 else 0.0
+            is_extreme = 1.0 if (val == A_min or val == A_max) else 0.0
+            z_score = (val - A_mean) / A_std if A_std > 0 else 0.0
             enhanced_sequence.append([
-                val,  # 原始值
-                val / A_sum if A_sum != 0 else 0,  # 值占A总和的比例
-                is_in_intersection,  # 是否在交集中
-                relative_position,  # 相对位置
-                relative_size,  # 相对大小（占总和的比例）
-                intersection_ratio  # 交集大小比例
+                val / sum(A),  # 本身的值占A的元素总和的比例
+                is_extreme,  # 是否是极值
+                z_score,  # 该值与均值之间的距离
+                relative_position,  # 该元素在A中的相对位置
+                min_max_scaled,  # 将一个值的原始位置，等比例地映射到 [0, 1] 区间
+                intersection_size  # A与B交集大小
             ])
 
         # 处理B序列
@@ -494,19 +517,25 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
             is_in_A = 1.0 if val in A else 0.0
             position_in_A = positions_in_A.get(val, -1)
             relative_position_in_A = position_in_A / num_a if position_in_A >= 0 else -0.1
-            # relative_size = val / B_sum if B_sum != 0 else 0
+
+            is_extreme = 1.0 if (val == B_min or val == B_max) else 0.0
+            # z_score = (val - B_mean) / B_std if B_std > 0 else 0.0
             # 计算未来得分特征
+            # 假设当前B[i]已经被处理，计算剩余B的未来得分
             remaining_B = B[i + 1:] if i < len(B) - 1 else []
             future_score = calculate_future_score(A, remaining_B)
             future_score_ratio = future_score / (sum(A) + sum(B)) if (sum(A) + sum(B)) > 0 else 0
+
             enhanced_sequence.append([
-                val,  # 原始值
-                # val / B_sum if B_sum != 0 else 0,  # 值占B总和的比例
-                future_score_ratio,  # 新增：未来得分比例
+                val / sum(B),  # 本身的值占B的元素总和的比例
+
+                future_score_ratio,  # 未来得分占可能的最大得分(全部消除)的占比
+
                 is_in_A,  # 是否在A中
-                relative_position_in_A,  # 在A中的相对位置（如果存在）
-                B_duplicates / num_b,  # B中重复元素的比例
-                intersection_ratio  # 交集大小比例
+                relative_position_in_A,  # 该值在A中的相对位置（不存在为-0.1）
+                B_duplicates / num_b,  # B中重复元素占所有B元素数的比例
+
+                is_extreme  # 是否是极值
             ])
 
         input_sequence = np.array(enhanced_sequence, dtype=np.float32)
@@ -614,20 +643,17 @@ def Transformer_predict_batch_plus_GA(A_batch, B_batch,genomeforassist, TR_model
             A = A_batch[idx]
             B = B_batch[idx]
 
-            # 1. 计算序列和
-            A_sum = sum(A)
-
-            # 2. 计算B序列中重复的元素数
+            # 计算B序列中重复的元素数
             B_counter = {}
             for val in B:
                 B_counter[val] = B_counter.get(val, 0) + 1
-            B_duplicates = sum(count - 1 for count in B_counter.values())
+            B_duplicates = sum(count - 1 for count in B_counter.values())  # 重复的元素数
 
-            # 3. 交集特征
+            # 交集特征
             intersection = set(A) & set(B)
             intersection_size = len(intersection)
 
-            # 4. 位置特征
+            # 位置特征
             positions_in_A = {}
             for i, a_val in enumerate(A):
                 positions_in_A[a_val] = i
@@ -635,20 +661,30 @@ def Transformer_predict_batch_plus_GA(A_batch, B_batch,genomeforassist, TR_model
             # 创建增强的输入序列
             enhanced_sequence = []
 
+            A_min = min(A)
+            A_max = max(A)
+            B_min = min(B)
+            B_max = max(B)
+            A_mean = np.mean(A)
+            A_std = np.std(A)
+            # B_mean = np.mean(B)
+            # B_std = np.std(B)
             # 处理A序列
             for i, val in enumerate(A):
-                is_in_intersection = 1.0 if val in intersection else 0.0
                 relative_position = i / num_a
-                relative_size = val / A_sum if A_sum != 0 else 0
-                intersection_ratio = intersection_size / num_b
 
+                # z_score = (val - A_mean) / A_std if A_std > 0 else 0.0
+                range_size = A_max - A_min
+                min_max_scaled = (val - A_min) / range_size if range_size > 0 else 0.0
+                is_extreme = 1.0 if (val == A_min or val == A_max) else 0.0
+                z_score = (val - A_mean) / A_std if A_std > 0 else 0.0
                 enhanced_sequence.append([
-                    val,  # 原始值
-                    val / A_sum if A_sum != 0 else 0,  # 值占A总和的比例
-                    is_in_intersection,  # 是否在交集中
-                    relative_position,  # 相对位置
-                    relative_size,  # 相对大小（占总和的比例）
-                    intersection_ratio  # 交集大小比例
+                    val / sum(A),  # 本身的值占A的元素总和的比例
+                    is_extreme,  # 是否是极值
+                    z_score,  # 该值与均值之间的距离
+                    relative_position,  # 该元素在A中的相对位置
+                    min_max_scaled,  # 将一个值的原始位置，等比例地映射到 [0, 1] 区间
+                    intersection_size  # A与B交集大小
                 ])
 
             # 处理B序列
@@ -657,18 +693,24 @@ def Transformer_predict_batch_plus_GA(A_batch, B_batch,genomeforassist, TR_model
                 position_in_A = positions_in_A.get(val, -1)
                 relative_position_in_A = position_in_A / num_a if position_in_A >= 0 else -0.1
 
+                is_extreme = 1.0 if (val == B_min or val == B_max) else 0.0
+                # z_score = (val - B_mean) / B_std if B_std > 0 else 0.0
                 # 计算未来得分特征
+                # 假设当前B[i]已经被处理，计算剩余B的未来得分
                 remaining_B = B[i + 1:] if i < len(B) - 1 else []
                 future_score = calculate_future_score(A, remaining_B)
                 future_score_ratio = future_score / (sum(A) + sum(B)) if (sum(A) + sum(B)) > 0 else 0
 
                 enhanced_sequence.append([
-                    val,  # 原始值
-                    future_score_ratio,  # 未来得分比例
+                    val / sum(B),  # 本身的值占B的元素总和的比例
+
+                    future_score_ratio,  # 未来得分占可能的最大得分(全部消除)的占比
+
                     is_in_A,  # 是否在A中
-                    relative_position_in_A,  # 在A中的相对位置（如果存在）
-                    B_duplicates / num_b,  # B中重复元素的比例
-                    intersection_ratio  # 交集大小比例
+                    relative_position_in_A,  # 该值在A中的相对位置（不存在为-0.1）
+                    B_duplicates / num_b,  # B中重复元素占所有B元素数的比例
+
+                    is_extreme  # 是否是极值
                 ])
 
             all_features.append(enhanced_sequence)
@@ -775,7 +817,7 @@ def train():
 
     try:
         # 使用缓存加载数据
-        train_data = load_jsonl_data(jsonfilename)
+        train_data = load_jsonl_data(jsonfile_path)
     except Exception as e:
         print(f"加载数据失败: {e}")
         exit(1)
@@ -788,7 +830,7 @@ def train():
     # 调用 train_model 时传递固定长度，并使用新的模型路径
     # 观察训练拟合后可以手动结束训练
 
-    train_model(train_data, epochs=100, batch_size=2048, model_path="./trained/transformer_move_predictor_6x3_skip.pth",
+    train_model(train_data, epochs=100, batch_size=2048, model_path=trans_path,
                 num_a=6, num_b=3, warmup_epochs=5, lr_max=0.0005, lr_min=0.0000001,
                 patience=2, min_delta=0.01)
 
@@ -948,6 +990,6 @@ def execution_time():
 
 
 if __name__ == "__main__":
-    # train()
+    train()
 
-    execution_time()
+    # execution_time()
