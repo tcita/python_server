@@ -7,7 +7,7 @@ import json
 import os
 
 
-from tool.tool import calculate_future_score, simulate_insertion_tool
+from AI_algorithm.tool.tool import calculate_future_score, simulate_insertion_tool
 
 # Todo 注意训练前的路径!!!
 jsonfile_path = "AI_algorithm/json/data_GA_fill.json"
