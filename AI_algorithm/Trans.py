@@ -552,17 +552,17 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
 
         best_moves = [[int(pred_order_indices[k]), pred_moves_clipped[k]] for k in range(num_b)]
 
-        final_order = [move[0] for move in best_moves]
-        final_moves = [move[1] for move in best_moves]
+        # final_order = [move[0] for move in best_moves]
+        # final_moves = [move[1] for move in best_moves]
 
-        pred_score = calculate_score(A, B, final_order, final_moves)
+        # pred_score = calculate_score(A, B, final_order, final_moves)
 
         # print(f"Transformer 预测 (6x3): A={A}, B={B} -> 策略={best_moves}, 预测得分={pred_score}")
 
-        result = (best_moves, pred_score)
 
 
-        return result
+
+        return best_moves
     except Exception as e:
         print(f"使用 Transformer 预测时出错 (6x3): A={A}, B={B}")
         print(f"错误信息: {str(e)}")
@@ -570,8 +570,8 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
         traceback.print_exc()
         print("返回默认策略")
         default_strategy = [[i, 1] for i in range(len(B))]
-        default_score = calculate_score_by_strategy(A, B, default_strategy)
-        return default_strategy, default_score
+        # default_score = calculate_score_by_strategy(A, B, default_strategy)
+        return default_strategy
 
 
 

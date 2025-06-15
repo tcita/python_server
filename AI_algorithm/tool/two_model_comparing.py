@@ -1,5 +1,7 @@
 
 import time
+from concurrent.futures import ThreadPoolExecutor
+
 import numpy as np
 import torch
 from scipy import stats
@@ -488,19 +490,33 @@ def Transformer(A, B):
 
 
 
-    move1, _ = Transformer_predict(A, B, model1, num_a=num_a_test, num_b=num_b_test)
+    move1= Transformer_predict(A, B, model1, num_a=num_a_test, num_b=num_b_test)
 
     return move1
 
 
+from concurrent.futures import ThreadPoolExecutor
+import threading
+
+# 假设 assist_count 是一个已经定义的全局变量
+# global assist_count
+# 为了线程安全，在多线程环境下修改全局变量时最好使用锁
+assist_count_lock = threading.Lock()
+
+
 def Transformer_P_GA(A, B):
+    """
+    并行执行 Transformer+评分 和 GA+评分，然后比较并返回更优的结果。
+    V2版本将评分步骤也加入到并行任务中。
+    """
     global assist_count
 
-    move1, _= Transformer_predict(A, B, model1, num_a=num_a_test, num_b=num_b_test)
+    move1= Transformer_predict(A, B, model1, num_a=num_a_test, num_b=num_b_test)
 
 
     # Todo 如果要结合GA优化预测结果  则取消以下注释
     score1=strategy_TrueScore(A,B,move1)
+
 
     move2=GA_Strategy(genomeforassist,A, B)
 
@@ -509,12 +525,10 @@ def Transformer_P_GA(A, B):
 
         assist_count+=1
         print(f"assist  win {assist_count} {A},{B}")
+
         return move2
 
     return move1
-
-
-
 
 def recursive(A,B):
     score,strategy=recursive_StrategyAndScore(A, B)
@@ -526,4 +540,4 @@ if __name__ == "__main__":
 
 
 
-    Compare_TwoModel(Transformer,Transformer_P_GA,rounds=20000,plot=True)
+    Compare_TwoModel(Transformer_P_GA(),GA,rounds=20000,plot=True)
