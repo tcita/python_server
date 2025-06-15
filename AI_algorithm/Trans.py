@@ -382,6 +382,7 @@ def train_model(train_data, epochs=300, batch_size=64, model_path="./trained/tra
                 loss = order_loss + pos_loss
 
                 loss.backward()
+                # 梯度裁剪
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
 
@@ -441,7 +442,6 @@ def train_model(train_data, epochs=300, batch_size=64, model_path="./trained/tra
     return model
 
 
-# 修改 DNNpredict 以使用新的固定长度
 # 修改预测函数，使用相同的特征工程
 # 添加预测缓存
 _prediction_cache = {}
@@ -466,7 +466,7 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
 
         # 检查输入长度是否为 6 和 3
         if len(A) != num_a or len(B) != num_b:
-            raise ValueError(f"DNNpredict 期望输入 A 长度为 {num_a}, B 长度为 {num_b}, 但收到 A:{len(A)}, B:{len(B)}")
+            raise ValueError(f" 期望输入 A 长度为 {num_a}, B 长度为 {num_b}, 但收到 A:{len(A)}, B:{len(B)}")
 
        # 特征计算  与prepare_data_transformer函数相同
         B_counter = {}
@@ -615,7 +615,7 @@ def Transformer_predict_batch_plus_GA(A_batch, B_batch,genomeforassist, TR_model
             # 检查长度
             if len(A) != num_a or len(B) != num_b:
                 raise ValueError(
-                    f"样本 {i}: DNNpredict 期望输入 A 长度为 {num_a}, B 长度为 {num_b}, 但收到 A:{len(A)}, B:{len(B)}")
+                    f"样本 {i}:  期望输入 A 长度为 {num_a}, B 长度为 {num_b}, 但收到 A:{len(A)}, B:{len(B)}")
 
             # 快速路径检查
             if not set(A) & set(B) and len(B) == len(set(B)):
@@ -673,7 +673,7 @@ def Transformer_predict_batch_plus_GA(A_batch, B_batch,genomeforassist, TR_model
             for i, val in enumerate(A):
                 relative_position = i / num_a
 
-                # z_score = (val - A_mean) / A_std if A_std > 0 else 0.0
+
                 range_size = A_max - A_min
                 min_max_scaled = (val - A_min) / range_size if range_size > 0 else 0.0
                 is_extreme = 1.0 if (val == A_min or val == A_max) else 0.0
@@ -869,7 +869,7 @@ def execution_time():
 
     total_time_recursive = 0
 
-    num_iterations = 10000  # 迭代次数
+    num_iterations = 20000  # 迭代次数
 
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -931,7 +931,7 @@ def execution_time():
 
 #计算Transform+GA 预测 运行的时间--------------------------------------------------------------
 
-    start_time_t = time.perf_counter()
+    start_time_tg = time.perf_counter()
 
     move_t = Transformer_predict_batch_plus_GA(A_batch, B_batch,genomeforassist, model1, num_a=num_a_test, num_b=num_b_test)
 
@@ -942,11 +942,11 @@ def execution_time():
         black_hole(item)
 
 
-    end_time_t = time.perf_counter()
+    end_time_tg = time.perf_counter()
 
 
 
-    total_time_transformer_P_GA += (end_time_t - start_time_t)
+    total_time_transformer_P_GA += (end_time_tg - start_time_tg)
 #GA算法运行的时间 -----------------------------------------------------------------------------
     total_time_GA=0
     start_time_g = time.perf_counter()
@@ -972,7 +972,16 @@ def execution_time():
 
     total_time_recursive += (end_time_r - start_time_r)
 #--------------------------------------------------------------------------------------------
+    total_time_Transformer = 0
+    start_time_t = time.perf_counter()
+    for A_copy, B_copy in test_cases:
+        move_T = Transformer_predict( A_copy, B_copy,model1)
 
+        # 保证解释器不优化未使用的move_GA
+        black_hole(move_T)
+    end_time_t = time.perf_counter()
+
+    total_time_Transformer += (end_time_t - start_time_t)
 
 
 
@@ -982,7 +991,7 @@ def execution_time():
 
     print(f"Total time for Transformer+GA:      {total_time_transformer_P_GA:.6f} seconds")
     print(f"Total time for GA: {total_time_GA:.6f} seconds")
-
+    print(f"Total time for Transformer:      {total_time_Transformer:.6f} seconds")
     print(f"Total time for recursive_Strategy: {total_time_recursive:.6f} seconds")
 
 
@@ -990,6 +999,6 @@ def execution_time():
 
 
 if __name__ == "__main__":
-    train()
+    # train()
 
-    # execution_time()
+    execution_time()

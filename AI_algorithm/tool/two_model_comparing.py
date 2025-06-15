@@ -54,37 +54,17 @@ def strategy_TrueScore(A, B, strategy):
         print(f"A: {A}")
         print(f"B: {B}")
 
-# def  testGeonme_with_given_A_B(A, B, best_genome=genome_loaded):
-#
-#
-#     # 复制 A 避免修改原始数据
-#     genetic_A = A.copy()
-#     genetic_score = 0
-#
-#     # 计算遗传算法的运行时间
-#     start_time_genetic = time.time()
-#     for i, card in enumerate(B):
-#         remaining_B = B[i + 1 :]
-#         _, score, genetic_A = genome_choose_insertion(best_genome, genetic_A, card, remaining_B)
-#         genetic_score += score
-#     end_time_genetic = time.time()
-#     time_genetic = end_time_genetic - start_time_genetic  # 计算遗传算法时间
-#
-#     # # 计算 other_model 算法的运行时间
-#     # start_time_other = time.time()
-#     # other_score = other_model(A.copy(), B.copy())
-#     # end_time_other = time.time()
-#     # time_other = end_time_other - start_time_other  # 计算其他算法时间
-#
-#     return genetic_score, time_genetic
+
 def TestModel_with_given_A_B(other_model, A, B):
     # 计算 other_model 算法的运行时间
     start_time_other = time.time()
     move = other_model(A.copy(), B.copy())
+    end_time_other = time.time()
+    time_other = end_time_other - start_time_other
+
     score=strategy_TrueScore(A, B, move)
 
-    end_time_other = time.time()
-    time_other = end_time_other - start_time_other  # 计算其他算法时间
+
     return score, time_other,move
 def compute_statistics(data):
     """计算均值、中位数、标准差、最小值和最大值"""
@@ -466,8 +446,10 @@ def Compare_TwoModel(model, other_model, rounds=1000, plot=False):
 
 
 
-def genome(A,B):
-    best_genome = load_best_genome()
+best_genome = load_best_genome()
+def GA(A,B):
+    global best_genome
+
     move=GA_Strategy(best_genome, A, B)
     return move
 
@@ -479,37 +461,41 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 assist_count = 0
 
+num_a_test = 6  # <--- 修改
+num_b_test = 3
+# 确保这些参数与训练时一致
+d_model = 256
+nhead = 4
+num_encoder_layers = 3
+dim_feedforward = 512
+dropout = 0.1
+
+model1 = TransformerMovePredictor(
+    num_a=num_a_test, num_b=num_b_test, d_model=d_model,
+    nhead=nhead, num_encoder_layers=num_encoder_layers,
+    dim_feedforward=dim_feedforward
+).to(device)
+
+model_path_1 = "../trained/transformer_move_predictor_6x3.pth"  # <--- 修改
+model1.load_state_dict(torch.load(model_path_1, map_location=device))
+
 
 
 genomeforassist = load_best_genome("../trained/best_genome.pkl")
+
+
 def Transformer(A, B):
 
+
+
+    move1, _ = Transformer_predict(A, B, model1, num_a=num_a_test, num_b=num_b_test)
+
+    return move1
+
+
+def Transformer_P_GA(A, B):
     global assist_count
 
-    num_a_test = 6 # <--- 修改
-    num_b_test = 3
-    # 确保这些参数与训练时一致
-    d_model = 256
-    nhead = 4
-    num_encoder_layers = 3
-    dim_feedforward = 512
-    dropout = 0.1
-
-    model1 = TransformerMovePredictor(
-        num_a=num_a_test, num_b=num_b_test, d_model=d_model,
-        nhead=nhead, num_encoder_layers=num_encoder_layers,
-        dim_feedforward=dim_feedforward
-    ).to(device)
-
-
-
-
-    model_path_1 = "../trained/transformer_move_predictor_6x3.pth" # <--- 修改
-    model1.load_state_dict(torch.load(model_path_1, map_location=device))
-
-    # A_batch = []
-    # B_batch = []
-    # move1, _Transformer_predict_batch(A_batch, B_batch, model1, num_a=num_a_test, num_b=num_b_test)
     move1, _= Transformer_predict(A, B, model1, num_a=num_a_test, num_b=num_b_test)
 
 
@@ -530,7 +516,6 @@ def Transformer(A, B):
 
 
 
-
 def recursive(A,B):
     score,strategy=recursive_StrategyAndScore(A, B)
     return score,strategy
@@ -541,4 +526,4 @@ if __name__ == "__main__":
 
 
 
-    Compare_TwoModel(genome,Transformer,rounds=20000,plot=True)
+    Compare_TwoModel(Transformer,Transformer_P_GA,rounds=20000,plot=True)
