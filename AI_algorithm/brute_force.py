@@ -5,7 +5,7 @@
 from collections import defaultdict
 from copy import copy, deepcopy
 
-from tool.tool import simulate_insertion_tool
+from AI_algorithm.tool.tool import simulate_insertion_tool
 
 
 # 返回的bestmoves中的位置是基于变化后的A（simulate_insertion处理过）的索引

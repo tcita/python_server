@@ -513,18 +513,17 @@ def Transformer(A, B):
     move1, _= Transformer_predict(A, B, model1, num_a=num_a_test, num_b=num_b_test)
 
 
+    # Todo 如果要结合GA优化预测结果  则取消以下注释
+    score1=strategy_TrueScore(A,B,move1)
 
-    # 如果要结合GA优化预测结果  则取消以下注释
-    # score1=strategy_TrueScore(A,B,move1)
+    move2=GA_Strategy(genomeforassist,A, B)
 
-    # move2=GA_Strategy(genomeforassist,A, B)
-    #
-    # score2=strategy_TrueScore(A,B,move2)
-    # if score1<score2:
-    #
-    #     assist_count+=1
-    #     print(f"assist  win {assist_count} {A},{B}")
-    #     return move2
+    score2=strategy_TrueScore(A,B,move2)
+    if score1<score2:
+
+        assist_count+=1
+        print(f"assist  win {assist_count} {A},{B}")
+        return move2
 
     return move1
 

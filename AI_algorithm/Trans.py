@@ -5,9 +5,9 @@ import time
 import torch
 import torch.nn as nn
 
-from GA import GA_Strategy
-from brute_force import recursive_Strategy
-from tool.tool import calculate_score_by_strategy, calculate_future_score, load_best_genome, \
+from AI_algorithm.GA import GA_Strategy
+from AI_algorithm.brute_force import recursive_Strategy
+from AI_algorithm.tool.tool import calculate_score_by_strategy, calculate_future_score, load_best_genome, \
     deal_cards_tool, strategy_TrueScore
 
 # Todo 注意训练前的路径!!!
