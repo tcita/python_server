@@ -1,5 +1,5 @@
 import multiprocessing
-import random
+
 import numpy as np
 import time
 import pickle
@@ -10,12 +10,12 @@ import os
 from AI_algorithm.tool.tool import calculate_future_score, simulate_insertion_tool
 
 # Todo 训练前注意路径!!!
-jsonfile_path = "AI_algorithm/json/data_GA_fill.json"
-genome_path = "trained/best_genome.pkl"
+# jsonfile_path = "AI_algorithm/json/data_GA_fill.json"
+# genome_path = "trained/best_genome.pkl"
 
 
-# jsonfile_path = "AI_algorithm/json/data_GA_skip.json"
-# genome_path="trained/best_genome_skip.pkl"
+jsonfile_path = "AI_algorithm/json/data_GA_skip.json"
+genome_path="trained/best_genome_skip.pkl"
 
 
 
@@ -647,7 +647,7 @@ if __name__ == "__main__":
     # Todo 训练前注意路径!!!
 
     pop_size=500
-    generations=20
+    generations=25
     num_rounds=500
     elitism_ratio=0.1
     tournament_size=3
