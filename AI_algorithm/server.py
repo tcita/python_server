@@ -13,7 +13,7 @@ import logging  # 1. 导入 logging 模块
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # 假设 Trans.py 和 GA.py 在同一目录下或在 Python 的搜索路径中
-from Trans import TransformerMovePredictor, Transformer_predict_batch_plus_GA
+from .Trans import TransformerMovePredictor, Transformer_predict_batch_plus_GA
 
 # --- 全局变量和模型加载 ---
 
@@ -42,8 +42,8 @@ def resource_path(relative_path):
 
 
 # 定义模型路径
-MODEL_PATH = resource_path("./trained/transformer_move_predictor_6x3.pth")
-GENOME_PATH = resource_path("./trained/best_genome.pkl")
+MODEL_PATH = resource_path("AI_algorithm/trained/transformer_move_predictor_6x3.pth")
+GENOME_PATH = resource_path("AI_algorithm/trained/best_genome.pkl")
 
 
 def load_models():

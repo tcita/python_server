@@ -31,6 +31,6 @@
 **/secrets.dev.yaml
 **/values.dev.yaml
 
-*.json
+AI_algorithm/json/
 LICENSE
 README.md

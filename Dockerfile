@@ -36,26 +36,17 @@ RUN adduser \
 # into this layer.
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=bind,source=requirements.txt,target=requirements.txt \
-    python -m pip install -r requirements.txt
-
-# Copy the source code into the container.
-# 注意：我们先切换到 root 用户来执行 COPY，并用 --chown 来指定文件所有者
-# 这是为了确保无论 USER 指令在哪里，我们都能控制文件权限
-USER root
-COPY --chown=appuser:appuser . .
-
-# ######################################################################
-#  将模型文件夹从它被默认复制到的地方，再复制到程序期望的根目录下
-#  源路径：/app/AI_algorithm/trained (由上面的 COPY . . 创建)
-#  目标路径：/app/trained (程序需要的地方)
-# ######################################################################
-RUN cp -R /app/AI_algorithm/trained /app/trained
+    python -m pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/
+	
 
 # Switch to the non-privileged user to run the application.
 USER appuser
+
+# Copy the source code into the container.
+COPY . .
 
 # Expose the port that the application listens on.
 EXPOSE 5000
 
 # Run the application.
-CMD python AI_algorithm/server.py
+CMD ["python", "-m", "AI_algorithm.server"]
