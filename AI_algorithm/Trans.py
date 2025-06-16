@@ -10,12 +10,6 @@ from AI_algorithm.brute_force import recursive_Strategy
 from AI_algorithm.tool.tool import calculate_score_by_strategy, calculate_future_score, load_best_genome, \
     deal_cards_tool, strategy_TrueScore
 
-# Todo 注意训练前的路径!!!
-jsonfile_path = "json/data_Trans_fill.jsonl"
-trans_path="./trained/transformer_move_predictor_6x3.pth"
-
-# jsonfil_path = "json/data_Trans_skip.jsonl"
-# trans_path="./trained/transformer_move_predictor_6x3_skip.pth"
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -999,6 +993,14 @@ def execution_time():
 
 
 if __name__ == "__main__":
-    # train()
 
-    execution_time()
+    # Todo 训练前注意路径!!!
+    # jsonfile_path = "json/data_Trans_fill.jsonl"
+    # trans_path="./trained/transformer_move_predictor_6x3.pth"
+
+    jsonfile_path = "json/data_Trans_skip.jsonl"
+    trans_path = "./trained/transformer_move_predictor_6x3_skip.pth"
+
+    train()
+
+    # execution_time()

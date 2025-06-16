@@ -496,9 +496,9 @@ def Transformer(A, B):
 
 
 
-
+times=0
 def Transformer_P_GA(A, B):
-
+    global  times
 
 
     move1= Transformer_predict(A, B, model1, num_a=num_a_test, num_b=num_b_test)
@@ -512,9 +512,9 @@ def Transformer_P_GA(A, B):
 
     score2=strategy_TrueScore(A,B,move2)
     if score1<score2:
+        times=times+1
 
-
-        print(f"assist  win  ")
+        print(f"assist  win  {times}")
 
         return move2
 
@@ -530,4 +530,4 @@ if __name__ == "__main__":
 
 
 
-    Compare_TwoModel(Transformer_P_GA,GA,rounds=20000,plot=True)
+    Compare_TwoModel(Transformer_P_GA,Transformer,rounds=20000,plot=True)

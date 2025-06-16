@@ -9,13 +9,13 @@ import os
 
 from AI_algorithm.tool.tool import calculate_future_score, simulate_insertion_tool
 
-# Todo 注意训练前的路径!!!
+# Todo 训练前注意路径!!!
 jsonfile_path = "AI_algorithm/json/data_GA_fill.json"
-genome_path="trained/best_genome.pkl"
+genome_path = "trained/best_genome.pkl"
+
 
 # jsonfile_path = "AI_algorithm/json/data_GA_skip.json"
 # genome_path="trained/best_genome_skip.pkl"
-
 
 
 
@@ -644,6 +644,7 @@ def analyze_evolution_methods(best_fitness_history, method_history, all_methods)
 
 
 if __name__ == "__main__":
+    # Todo 训练前注意路径!!!
 
     pop_size=500
     generations=20
