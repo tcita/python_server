@@ -10,12 +10,12 @@ import os
 from AI_algorithm.tool.tool import calculate_future_score, simulate_insertion_tool
 
 # Todo 训练前注意路径!!!
-# jsonfile_path = "AI_algorithm/json/data_GA_fill.json"
-# genome_path = "trained/best_genome.pkl"
+jsonfile_path = "AI_algorithm/json/data_GA_fill.json"
+genome_path = "trained/best_genome.pkl"
 
-
-jsonfile_path = "AI_algorithm/json/data_GA_skip.json"
-genome_path="trained/best_genome_skip.pkl"
+#
+# jsonfile_path = "AI_algorithm/json/data_GA_skip.json"
+# genome_path="trained/best_genome_skip.pkl"
 
 
 

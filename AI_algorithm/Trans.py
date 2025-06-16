@@ -995,11 +995,11 @@ def execution_time():
 if __name__ == "__main__":
 
     # Todo 训练前注意路径!!!
-    # jsonfile_path = "json/data_Trans_fill.jsonl"
-    # trans_path="./trained/transformer_move_predictor_6x3.pth"
+    jsonfile_path = "json/data_Trans_fill.jsonl"
+    trans_path="./trained/transformer_move_predictor_6x3.pth"
 
-    jsonfile_path = "json/data_Trans_skip.jsonl"
-    trans_path = "./trained/transformer_move_predictor_6x3_skip.pth"
+    # jsonfile_path = "json/data_Trans_skip.jsonl"
+    # trans_path = "./trained/transformer_move_predictor_6x3_skip.pth"
 
     train()
 

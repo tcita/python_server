@@ -446,9 +446,9 @@ def Compare_TwoModel(model, other_model, rounds=1000, plot=False):
 
     print("测试完成！")
 
+model_path_2 = "../trained/best_genome.pkl"
 
-
-best_genome = load_best_genome()
+best_genome = load_best_genome(model_path_2)
 def GA(A,B):
     global best_genome
 
@@ -478,7 +478,7 @@ model1 = TransformerMovePredictor(
     dim_feedforward=dim_feedforward
 ).to(device)
 
-model_path_1 = "../trained/transformer_move_predictor_6x3.pth"  # <--- 修改
+model_path_1 = "../trained/transformer_move_predictor_6x3.pth"
 model1.load_state_dict(torch.load(model_path_1, map_location=device))
 
 
@@ -530,4 +530,4 @@ if __name__ == "__main__":
 
 
 
-    Compare_TwoModel(Transformer_P_GA,Transformer,rounds=20000,plot=True)
+    Compare_TwoModel(GA,Transformer,rounds=20000,plot=True)
