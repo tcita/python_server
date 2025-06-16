@@ -145,7 +145,7 @@ def deal_cards_tool():
 
 import pickle
 
-def load_best_genome(filename="../trained/best_genome.pkl"):
+def load_best_genome(filename):
     try:
         # 尝试打开并加载文件
         with open(filename, 'rb') as file:
