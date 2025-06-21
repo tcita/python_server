@@ -1,4 +1,4 @@
-
+import json
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -525,9 +525,35 @@ def recursive(A,B):
     return score,strategy
 
 
+from itertools import permutations  # 导入排列组合库
+
+# 原始数据
+
+def call_strategy_for_all_permutations(A, B):
+    """
+    对B进行全排列，然后循环调用strategy_TrueScore
+    返回所有结果的列表
+    """
+    results = []  # 存储所有结果
+
+    # 生成B的所有排列
+    for perm_B in permutations(B):
+        perm_B_list = list(perm_B)  # 将元组转换为列表
+
+
+        result = strategy_TrueScore(A,perm_B_list,Transformer(A,perm_B_list))
+        score, _ = recursive_StrategyAndScore(A, B)
+        print(f" A:{A}, B: {perm_B_list}, Transformer 结果: {result} Recursive 结果{score}")
+
+
+
 
 if __name__ == "__main__":
+    A = [11, 13, 3, 10, 12, 6]
+    B = [13, 8, 1]
+    call_strategy_for_all_permutations(A,B)
+    A = [6, 5, 9, 11, 10, 13]
+    B = [6, 3, 7]
+    call_strategy_for_all_permutations(A, B)
 
-
-
-    Compare_TwoModel(GA,Transformer,rounds=20000,plot=True)
+    # Compare_TwoModel(GA,Transformer,rounds=20000,plot=True)

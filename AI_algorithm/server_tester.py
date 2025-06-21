@@ -14,7 +14,18 @@ def test_prediction_server():
     """
     # Prepare a static, valid payload to ensure the test is repeatable.
     # The server expects A to have 6 cards and B to have 3 cards.
-    A,B=deal_cards_tool()
+    # A,B=deal_cards_tool()
+
+
+    A= [11,13,3,10,12,6]
+    B= [13,8,1]
+
+    # The score of the predicted strategy: 48
+    # The score of the recursive strategy: 66
+    # The recursive strategy(move): [[1, 2], [2, 2], [0, 8]]
+    # Predicted Strategy (move):[[1, 2], [2, 2], [0, 6]]
+
+
 
     payload = {
         "A": A,
