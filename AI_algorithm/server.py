@@ -14,13 +14,15 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # 假设 Trans.py 和 GA.py 在同一目录下或在 Python 的搜索路径中
 # from Trans import TransformerMovePredictor, Transformer_predict_batch_plus_GA
-from .Trans import TransformerMovePredictor, Transformer_predict_batch_plus_GA
+from AI_algorithm.Trans import TransformerMovePredictor, Transformer_predict_batch_plus_GA
 # --- 全局变量和模型加载 (Global Variables and Model Loading) ---
 
 app = Flask(__name__)
 
 # 定义设备 (GPU 或 CPU) (Define device - GPU or CPU)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# 直接指定使用cpu
+device = torch.device("cpu")
 
 # 初始化模型和基因组变量 (Initialize model and genome variables)
 TR_MODEL = None

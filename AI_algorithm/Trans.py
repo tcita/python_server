@@ -257,7 +257,7 @@ stop_training = False
 
 def signal_handler(sig, frame):
     global stop_training
-    print("\n检测到手动停止信号，准备保存当前模型...")
+    # print("\n检测到手动停止信号，准备保存当前模型...")
     stop_training = True
 
 

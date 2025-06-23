@@ -13,3 +13,4 @@ AI_algorithm/json/data_GA_fill.json
 AI_algorithm/json/data_raw.json
 AI_algorithm/json/data_Trans_fill.json
 AI_algorithm/json/data_Trans_skip.jsonl
+*.tar

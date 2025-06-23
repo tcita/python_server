@@ -1,0 +1,26 @@
+pyproject.toml
+AI_algorithm/GA.py
+AI_algorithm/Generalization test.py
+AI_algorithm/Ger_permutation_test_set.py
+AI_algorithm/Get_trainingset.py
+AI_algorithm/Get_trainingset_huge.py
+AI_algorithm/Trans.py
+AI_algorithm/__init__.py
+AI_algorithm/brute_force.py
+AI_algorithm/server.py
+AI_algorithm/server_tester.py
+AI_algorithm/transformer_score.py
+AI_algorithm/tree.py
+AI_algorithm/json/convert_specific_to_jsonl.py
+AI_algorithm/json/dedpu.py
+AI_algorithm/json/sum.py
+AI_algorithm/tool/__init__.py
+AI_algorithm/tool/test.py
+AI_algorithm/tool/tool.py
+AI_algorithm/tool/two_model_comparing.py
+AI_algorithm/unit_test/insertion_test.py
+AI_algorithm/unit_test/jsondata_test.py
+python_server.egg-info/PKG-INFO
+python_server.egg-info/SOURCES.txt
+python_server.egg-info/dependency_links.txt
+python_server.egg-info/top_level.txt
