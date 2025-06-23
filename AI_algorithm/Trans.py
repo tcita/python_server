@@ -14,9 +14,9 @@ from AI_algorithm.tool.tool import calculate_score_by_strategy, calculate_future
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 if device.type == "cuda":
-    print(f"CUDA可用，使用GPU: {torch.cuda.get_device_name(0)}")
+    print(f"CUDA available，Using GPU: {torch.cuda.get_device_name(0)}")
 else:
-    print("CUDA不可用，使用CPU")
+    print("Using CPU")
 
 
 def calculate_score(A, B, order, moves):
