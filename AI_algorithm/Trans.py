@@ -26,17 +26,50 @@ def calculate_score(A, B, order, moves):
 
 
 # --- Transformer 相关组件 ---
-
+# 继承 nn.Module
 class PositionalEncoding(nn.Module):
     # 确保 max_len >= num_a + num_b (6 + 3 = 9)
+    """
+        __init__ 方法初始化对象的位置编码模块。
+
+        d_model: 表示模型的维度（即嵌入向量的维度）。
+        dropout: Dropout 的概率，默认为 0.1。 训练时随机丢弃10%的神经元 ，用于防止过拟合。
+        max_len: 最大序列长度，表示可以支持的最大位置数
+
+    """
     def __init__(self, d_model, dropout=0.1, max_len=20):  # 增加 max_len 以确保安全
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
+        # 形状为[max_len d_model]的 0张量
         pe = torch.zeros(max_len, d_model)
+
+        # 创建一个从 0 到 max_len-1 的列表，并将其形状从 [max_len] 变为 [max_len, 1]
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+
+
+
+        # div_term = =[10000^(0/-d_model), 10000^(2/-d_model), ..., 10000^((d_model-2)/-d_model)]
+        # d_model/2个元素
+
         div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+
+        # position * div_term得到形状为 [max_len, d_model/2]的张量
+
+        # position * div_term 矩阵的结构：
+        # [ [i / 10000^(0/d_model)]^T,    [i / 10000^(2/d_model)]^T  ,...,   [i / 10000^((d_model-2)/d_model)]^T ]
+
+        # 其中 i ∈ [0, 1, 2, ..., max_len-1]
+
+        # 对于position * div_term 这个矩阵而言,元素和行,列的映射关系是 f(i,j)=i/k   k=10000^ (2j / d_model  )
+        # 在第j列中,j为参数,i为自变量 ,随着行索引i的增加,元素值从最小值0开始向(max_len-1)/k线性增长
+        # 在第i行中,i为参数,j为自变量 随着列索引j增加，因为f(i,j)中的变量j出现在了分母中一个指数项的指数位置上 ,所以元素值从最大值i开始向0呈现指数级衰减
+
+
+        # 为偶数列赋值
         pe[:, 0::2] = torch.sin(position * div_term)
+        # 为奇数列赋值
         pe[:, 1::2] = torch.cos(position * div_term)
+        # 在第0维增加一个batch维度，将形状从[max_len, d_model]变为[1, max_len, d_model]
         pe = pe.unsqueeze(0)
         self.register_buffer('pe', pe)
 
