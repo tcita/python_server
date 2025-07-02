@@ -64,7 +64,7 @@ class PositionalEncoding(nn.Module):
         # 在第j列中,j为参数,i为自变量 ,随着行索引i的增加,元素值从最小值0开始向(max_len-1)/k线性增长
         # 在第i行中,i为参数,j为自变量 随着列索引j增加，因为f(i,j)中的变量j出现在了分母中一个指数项的指数位置上 ,所以元素值从最大值i开始向0呈现指数级衰减
 
-
+        # 通过切片的方式将整个position * div_term矩阵分为两类,通过分别取正余弦来初始化位置编码矩阵
         # 为偶数列赋值
         pe[:, 0::2] = torch.sin(position * div_term)
         # 为奇数列赋值
