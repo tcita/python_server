@@ -37,13 +37,13 @@ class PositionalEncoding(nn.Module):
         max_len: 最大序列长度，表示可以支持的最大位置数
 
     """
-    def __init__(self, d_model, dropout=0.1, max_len=20):  # 增加 max_len 以确保安全
+    def __init__(self, d_model, dropout=0.1, max_len=20):  # 定义一个足够大的 max_len 以容纳预期的最长序列
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
         # 形状为[max_len d_model]的 0张量
         pe = torch.zeros(max_len, d_model)
 
-        # 创建一个从 0 到 max_len-1 的列表，并将其形状从 [max_len] 变为 [max_len, 1]
+        # 创建一个从 0 到 max_len-1 的一维张量，并将其形状从 [max_len] 变为 [max_len, 1]
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
 
 
@@ -64,13 +64,23 @@ class PositionalEncoding(nn.Module):
         # 在第j列中,j为参数,i为自变量 ,随着行索引i的增加,元素值从最小值0开始向(max_len-1)/k线性增长
         # 在第i行中,i为参数,j为自变量 随着列索引j增加，因为f(i,j)中的变量j出现在了分母中一个指数项的指数位置上 ,所以元素值从最大值i开始向0呈现指数级衰减
 
-        # 通过切片的方式将整个position * div_term矩阵分为两类,通过分别取正余弦来初始化位置编码矩阵
-        # 为偶数列赋值
+
+        # 令ω_j=1/10000^ (2j / d_model  ),θ_j=kω_j,k为相对position的位置
+        #
+        # 由于 旋转矩阵M(θ_j)^T*[sin(position*ω_j)   cos(position*ω_j)]^T= [sin(position+k)*ω_j  cos(position+k)*ω_j]
+        # 这样的设计便于获取相对position偏移量为k的位置的位置编码 (通过对[pe[2i] pe[2i+1]]^T进行线性变换得到)
+        # 因此完整的位置编码pe[position+k]可以通过旋转矩阵组成的分块对角矩阵 M_k  与pe(position)做矩阵乘法得到
+
+
+        # 将position * div_term矩阵依据列序号的偶数和奇数分为两种情况,并分别取正余弦,在不拆分该矩阵的情况下来初始化位置编码矩阵
+
         pe[:, 0::2] = torch.sin(position * div_term)
-        # 为奇数列赋值
+
         pe[:, 1::2] = torch.cos(position * div_term)
+
         # 在第0维增加一个batch维度，将形状从[max_len, d_model]变为[1, max_len, d_model]
         pe = pe.unsqueeze(0)
+        #使用 register_buffer 将 pe 注册为模型的缓冲区。
         self.register_buffer('pe', pe)
 
     def forward(self, x):
