@@ -18,17 +18,17 @@ if device.type == "cuda":
 else:
     print("Using CPU")
 
-
-def calculate_score(A, B, order, moves):
-    strategy = [[int(order[i]), int(moves[i])] for i in range(len(order))]
-    total_score = calculate_score_by_strategy(A, B, strategy)
-    return total_score
+#
+# def calculate_score(A, B, order, moves):
+#     strategy = [[int(order[i]), int(moves[i])] for i in range(len(order))]
+#     total_score = calculate_score_by_strategy(A, B, strategy)
+#     return total_score
 
 
 # --- Transformer 相关组件 ---
-# 继承 nn.Module
+
 class PositionalEncoding(nn.Module):
-    # 确保 max_len >= num_a + num_b (6 + 3 = 9)
+
     """
         __init__ 方法初始化对象的位置编码模块。
 
@@ -78,49 +78,64 @@ class PositionalEncoding(nn.Module):
 
         pe[:, 1::2] = torch.cos(position * div_term)
 
-        # 在第0维增加一个batch维度，将形状从[max_len, d_model]变为[1, max_len, d_model]
+        # 在第0维增加一个batch维度，将形状从[max_len, d_model]变为[1, max_len, d_model],以便与词嵌入向量相加
         pe = pe.unsqueeze(0)
         #使用 register_buffer 将 pe 注册为模型的缓冲区。
         self.register_buffer('pe', pe)
 
     def forward(self, x):
+        # 向量x逐元素加上位置编码的当前输入长度切片,广播机制会调整张量的形状使得能够相加
         x = x + self.pe[:, :x.size(1)]
         return self.dropout(x)
 
 
-# 修改 TransformerMovePredictor 类的初始化，增加输入维度
+
 class TransformerMovePredictor(nn.Module):
-    # 修改默认参数以反映新的固定长度和增加的特征维度
     def __init__(self, input_dim=6, d_model=128, nhead=8, num_encoder_layers=3,
-                 dim_feedforward=512, dropout=0.1, num_a=6, num_b=3):  # 修改input_dim为6
+                 dim_feedforward=512, dropout=0.1, num_a=6, num_b=3):
         super(TransformerMovePredictor, self).__init__()
-        # 验证传入的 num_a 和 num_b 是否符合预期（可选但推荐）
+        # 验证传入的 num_a 和 num_b 是否符合预期
         if num_a != 6 or num_b != 3:
-            print(f"警告: TransformerMovePredictor 初始化期望 num_a=6, num_b=3, 但收到了 num_a={num_a}, num_b={num_b}")
+            raise ValueError(
+                f"TransformerMovePredictor 初始化期望 num_a=6, num_b=3, 但收到了 num_a={num_a}, num_b={num_b}")
 
         self.num_a = num_a
         self.num_b = num_b
-        self.seq_len = num_a + num_b  # 现在是 6 + 3 = 9
+        #  seq_len=6 + 3 = 9
+        self.seq_len = num_a + num_b
         self.d_model = d_model
 
+        # 定义线性投影层 (y = xW^T + b)，Linear将输入in_features映射到out_features维度。
+        # 初始化各自独立的权重矩阵 W 和偏置向量 b
+
+        # # 将原始输入特征 (input_dim) 映射到模型的隐藏维度 (d_model)
         self.input_embed = nn.Linear(input_dim, d_model)
-        self.type_embed = nn.Embedding(2, d_model)  # 0 for A, 1 for B
-        # 确保 PositionalEncoding 的 max_len 足够大
+
+        # # 顺序预测头：预测它们两两之间的相对顺序关系 (输出一个 num_b x num_b 的关系矩阵)
+        self.order_head = nn.Linear(num_b * d_model, num_b * num_b)
+
+        # 位置预测头：为每个元素预测其绝对位置或类别 (输出 num_b 个值)
+        self.pos_head = nn.Linear(num_b * d_model, num_b)
+
+        # 定义类别嵌入层，创建查找表,用于区分两种不同类型(输入来自A或者B)的输入
+        self.type_embed = nn.Embedding(2, d_model)
+        # 初始化位置编码模块 max_len用于缓冲
         self.pos_encoder = PositionalEncoding(d_model, dropout, max_len=self.seq_len + 5)
 
+        # 定义编码器layer和编码器
         encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead,
                                                    dim_feedforward=dim_feedforward, dropout=dropout,
                                                    batch_first=True)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_encoder_layers)
 
-        # 输出头仍然基于 num_b = 3
-        self.order_head = nn.Linear(num_b * d_model, num_b * num_b)
-        self.pos_head = nn.Linear(num_b * d_model, num_b)
 
+
+        # 初始化模型中的参数
         self.init_weights()
 
     def init_weights(self):
         initrange = 0.1
+        # 初始化各层权重与偏置
         self.input_embed.weight.data.uniform_(-initrange, initrange)
         self.input_embed.bias.data.zero_()
         self.type_embed.weight.data.uniform_(-initrange, initrange)
@@ -130,17 +145,19 @@ class TransformerMovePredictor(nn.Module):
         self.pos_head.bias.data.zero_()
 
     def forward(self, src, src_mask=None, src_key_padding_mask=None):
+        # 输入数据标准化
         if src.dim() == 2:
-            src = src.unsqueeze(-1)  # (batch, seq_len, 1)
-
+            src = src.unsqueeze(-1)  # (批处理大小, 每个样本的长度, 1)
+        # 词嵌入.将输入的词ID序列 (src) 转换为词义向量 (self.input_embed)。将这些词义向量放大合适的比例，使得适合在后续与位置信息向量相加
         input_embedded = self.input_embed(src) * math.sqrt(self.d_model)
 
-        # type_ids: num_a 个 0, num_b 个 1
+        # 创建num_a 个 0 组成的类型向量 和 num_b 个 1 组成的类型向量,并将它们拼接,并填入类型查找表(type_embed)中
         type_ids = torch.cat([torch.zeros(self.num_a, dtype=torch.long),
                               torch.ones(self.num_b, dtype=torch.long)], dim=0).to(src.device)
         type_ids = type_ids.unsqueeze(0).expand(src.size(0), -1)  # (batch_size, seq_len)
         type_embedded = self.type_embed(type_ids)
 
+        # 逐元素相加词嵌入和类型嵌入形成嵌入向量,这个向量会作为PositionalEncoding中的forward的参数x,来调用forward
         embedded = input_embedded + type_embedded
         embedded = self.pos_encoder(embedded)
 
