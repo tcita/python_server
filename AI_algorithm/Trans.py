@@ -145,10 +145,12 @@ class TransformerMovePredictor(nn.Module):
         self.pos_head.bias.data.zero_()
 
     def forward(self, src, src_mask=None, src_key_padding_mask=None):
-        # 输入数据标准化
+        # 确保输入数据维度
         if src.dim() == 2:
             src = src.unsqueeze(-1)  # (批处理大小, 每个样本的长度, 1)
-        # 词嵌入.将输入的词ID序列 (src) 转换为词义向量 (self.input_embed)。将这些词义向量放大合适的比例，使得适合在后续与位置信息向量相加
+
+        #使用线性层 (input_embed) 将原始的输入特征 (src) 从 input_dim 维度投影到模型的内部维度 d_model。
+        # 然后乘以 math.sqrt(self.d_model) 目的是为了在后续加入位置编码和进行注意力计算时，保持向量的尺度适当
         input_embedded = self.input_embed(src) * math.sqrt(self.d_model)
 
         # 创建num_a 个 0 组成的类型向量 和 num_b 个 1 组成的类型向量,并将它们拼接,并填入类型查找表(type_embed)中
@@ -161,15 +163,18 @@ class TransformerMovePredictor(nn.Module):
         embedded = input_embedded + type_embedded
         embedded = self.pos_encoder(embedded)
 
+        # 根据嵌入向量返回所有单词的深层上下文表示的张量  memory shape: (batch_size, seq_len=9, d_model)
         memory = self.transformer_encoder(embedded, mask=src_mask, src_key_padding_mask=src_key_padding_mask)
-        # memory shape: (batch_size, seq_len=9, d_model)
 
-        # 提取 B 对应的输出特征 (最后 num_b=3 个)
+
+        # 提取 B 对应的上下文嵌入后的输出特征 (最后 num_b=3 个)
         # 使用 self.num_a (现在是6) 作为索引起点
         b_features = memory[:, self.num_a:]  # (batch_size, num_b=3, d_model)
 
+        #将 b_features 的形状从 (batch_size, 3, d_model) 转换成 (batch_size, 3 * d_model)
         b_features_flat = b_features.reshape(b_features.size(0), -1)  # (batch_size, num_b * d_model)
 
+        # 3 个 B 特征元素之间的相对顺序,以及预测它们的插入位置
         order_logits_flat = self.order_head(b_features_flat)
         order_logits = order_logits_flat.view(-1, self.num_b, self.num_b)  # (batch_size, 3, 3)
 
@@ -181,7 +186,6 @@ class TransformerMovePredictor(nn.Module):
 # --- 数据准备和训练逻辑 (调整以适应 Transformer) ---
 
 def sample_order(logits, temperature=1.0):
-    # (保持不变, 因为 B 的数量仍然是 3)
     probs = torch.softmax(logits / temperature, dim=-1)
     order_indices = torch.argsort(logits, dim=1, descending=True)
     order = order_indices[:, 0, :]
