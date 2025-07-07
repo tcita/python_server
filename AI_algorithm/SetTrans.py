@@ -118,10 +118,10 @@ class TransformerMovePredictor(nn.Module):
         # 新的预测头将处理每个B元素的“局部特征”和B集合的“全局特征”的组合。
         # 输入维度将是 d_model (局部) + d_model (全局) = 2 * d_model
 
-        # 为每个B元素预测一个“排序分”，分数越高代表越优先
-        self.order_head = nn.Linear(2 * d_model, 1)
+        # 新: 让模型为每个B元素，都预测一个长度为num_b的分数向量
+        #    这个向量代表该元素被放在第0、第1、第2个位置的得分
+        self.order_head = nn.Linear(2 * d_model, num_b)
 
-        # 为每个B元素预测其插入位置
         self.pos_head = nn.Linear(2 * d_model, 1)
 
         self.init_weights()
@@ -172,15 +172,15 @@ class TransformerMovePredictor(nn.Module):
         combined_features = torch.cat([b_features, b_global_feature_expanded],
                                       dim=2)  # Shape: (batch_size, num_b, 2 * d_model)
 
-        # 3. 使用新的预测头进行预测
-        # 对每个B元素（现在带有全局上下文）独立进行预测
-        order_scores = self.order_head(combined_features).squeeze(-1)  # Shape: (batch_size, num_b)
-        pos_preds = self.pos_head(combined_features).squeeze(-1)  # Shape: (batch_size, num_b)
+        # --- 输出形状自动改变 ---
+        # self.order_head 现在是 (2*d_model -> num_b)
+        # 所以 order_logits 的 shape 将是 (batch_size, num_b, num_b)
+        order_logits = self.order_head(combined_features)
+        pos_preds = self.pos_head(combined_features).squeeze(-1)
 
-        # 注意：order_scores 不再是 3x3 的矩阵，而是一个长度为 3 的分数向量。
-        # 分数越高的项，代表它应该被排在越前面。
-        return order_scores, pos_preds
-
+        # order_logits[b, i, j] 的含义是：
+        # 对于batch中的第b个样本，其B集合中的第i个元素，被排在第j个位置的得分
+        return order_logits, pos_preds
 
 # --- 数据准备和训练逻辑  ---
 # 代表优先级的连续分数 (logits)，解码成的离散项目顺序
@@ -265,8 +265,10 @@ def prepare_data_transformer(sample: dict, num_a=6, num_b=3):
         # z_score = (val - B_mean) / B_std if B_std > 0 else 0.0
         # 计算未来得分特征
         # 假设当前B[i]已经被处理，计算剩余B的未来得分
-        remaining_B = B[i + 1:] if i < len(B) - 1 else []
-        future_score = calculate_future_score(A, remaining_B)
+        other_B = B[:i] + B[i + 1:]
+
+        # 基于这个“其他牌”的集合来计算未来得分
+        future_score = calculate_future_score(A, other_B)
         future_score_ratio = future_score / (sum(A) + sum(B)) if (sum(A) + sum(B)) > 0 else 0
 
         enhanced_sequence.append([
@@ -419,9 +421,16 @@ def train_model(train_data, epochs=300, batch_size=64, model_path="./trained/tra
                 order_logits, pos_preds = model(inputs)
 
                 # 计算损失
-                order_loss = order_criterion(order_logits, order_targets)
-                pos_loss = pos_criterion(pos_preds, pos_targets)
+                order_logits_permuted = order_logits.permute(0, 2, 1)  # Shape: (batch, 3, 3)
 
+                # 现在 order_logits_permuted[b, j, i] 的含义是：
+                # 对于第 b 个样本的第 j 个出牌位置，各个牌（i=0,1,2）的得分
+                # 这正好匹配 CrossEntropyLoss 的要求。
+                # target order_targets[b, j] 就是第 j 个位置的正确牌的索引。
+                order_loss = order_criterion(order_logits_permuted, order_targets)
+
+                # pos_loss 计算保持不变
+                pos_loss = pos_criterion(pos_preds, pos_targets)
                 loss = order_loss + pos_loss
 
                 loss.backward()
@@ -490,7 +499,7 @@ def train_model(train_data, epochs=300, batch_size=64, model_path="./trained/tra
 _prediction_cache = {}
 
 
-def Transformer_predict(A, B, model, num_a=6, num_b=3):
+def Transformer_predict_v(A, B, model, num_a=6, num_b=3):
     """
     使用训练好的 Transformer 模型进行预测 (针对 A=6, B=3)。
     """
@@ -564,9 +573,13 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
             is_extreme = 1.0 if (val == B_min or val == B_max) else 0.0
             # z_score = (val - B_mean) / B_std if B_std > 0 else 0.0
             # 计算未来得分特征
-            # 假设当前B[i]已经被处理，计算剩余B的未来得分
-            remaining_B = B[i + 1:] if i < len(B) - 1 else []
-            future_score = calculate_future_score(A, remaining_B)
+            # # 假设当前B[i]已经被处理，计算剩余B的未来得分
+            # remaining_B = B[i + 1:] if i < len(B) - 1 else []
+            # 创建一个不包含当前元素 val 的列表 (B - {val})
+            other_B = B[:i] + B[i + 1:]
+
+            # 基于这个“其他牌”的集合来计算未来得分
+            future_score = calculate_future_score(A, other_B)
             future_score_ratio = future_score / (sum(A) + sum(B)) if (sum(A) + sum(B)) > 0 else 0
 
             enhanced_sequence.append([
@@ -587,23 +600,54 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
         with torch.no_grad():
             order_logits, pos_preds = model(input_tensor)
 
-        pred_order_indices = sort_order(order_logits).squeeze(0).cpu().numpy()
+        # --- 调试代码 ---
+        # print(f"DEBUG: order_logits shape: {order_logits.shape}")
+        # print(f"DEBUG: pos_preds shape: {pos_preds.shape}")
+        #
+        # # pred_order_indices = sort_order(order_logits).squeeze(0).cpu().numpy() # 你的原始代码
+
+        # squeezed_logits = order_logits.squeeze(0)
+        # print(f"DEBUG: squeezed_logits shape: {squeezed_logits.shape}")
+        #
+        # pred_order_indices_tensor = sort_order(squeezed_logits)  # 假设 sort_order 接收 squeeze 后的
+        # print(f"DEBUG: pred_order_indices_tensor shape: {pred_order_indices_tensor.shape}")
+        #
+        # pred_order_indices = pred_order_indices_tensor.cpu().numpy()
+        # print(f"DEBUG: pred_order_indices (numpy array) shape: {pred_order_indices.shape}")
+        # print(f"DEBUG: num_b: {num_b}")
+        # --- 调试代码结束 ---
+
+        # --- 从这里开始修改 ---
+
+        # 1. 对 "位置" 维度 (dim=2) 求 argmax，决定每个出牌位置应该放哪个牌
+        # order_logits shape: (1, 3, 3) -> 交换维度为 (1, 3, 3) 方便理解
+        # permute(0, 2, 1) 后，shape 为 (1, 3, 3)，含义变为 [batch, position, card_score]
+        # 即对于每个 position，哪个 card 的分数最高
+        final_order_indices = torch.argmax(order_logits.permute(0, 2, 1), dim=2)
+        # final_order_indices shape: (1, 3)
+
+        # 2. 清理并转换为 numpy array
+        pred_order_indices = final_order_indices.squeeze(0).cpu().numpy()
+        # 现在 pred_order_indices 的 shape 是 (3,)，例如 array([2, 0, 1])
+        # 这直接就是我们想要的顺序！
+
         pred_moves_raw = pos_preds.squeeze(0).cpu().numpy()
 
+        # 3. 裁剪位置预测值
         pos_range_base = len(A)
-        pred_moves_clipped = [int(np.clip(p, 0, pos_range_base + k)) for k, p in enumerate(pred_moves_raw)]
+        # 注意：这里需要根据最终的顺序来重新组织位置预测
+        # pos_preds[i] 是原始B中第i个元素的位置预测
+        # 我们需要按 final_order_indices 重新排列它们
+        # 例如，如果顺序是 [2, 0, 1]，那么最终的位置列表应该是 [pos_preds[2], pos_preds[0], pos_preds[1]]
+        reordered_pos_raw = pred_moves_raw[pred_order_indices]
+        pred_moves_clipped = [int(np.clip(p, 0, pos_range_base + k)) for k, p in enumerate(reordered_pos_raw)]
 
+        # 4. 构建最终策略
+        # best_moves 的结构是 [[order, position], [order, position], ...]
+        # 这里的 order 是指原始 B 数组中的索引
         best_moves = [[int(pred_order_indices[k]), pred_moves_clipped[k]] for k in range(num_b)]
 
-        # final_order = [move[0] for move in best_moves]
-        # final_moves = [move[1] for move in best_moves]
-
-        # pred_score = calculate_score(A, B, final_order, final_moves)
-
-        # print(f"Transformer 预测 (6x3): A={A}, B={B} -> 策略={best_moves}, 预测得分={pred_score}")
-
-
-
+        # --- 修改结束 ---
 
         return best_moves
     except Exception as e:
@@ -1005,7 +1049,7 @@ def execution_time():
     total_time_Transformer = 0
     start_time_t = time.perf_counter()
     for A_copy, B_copy in test_cases:
-        move_T = Transformer_predict( A_copy, B_copy,model1)
+        move_T = Transformer_predict_v(A_copy, B_copy, model1)
 
         # 保证解释器不优化未使用的move_GA
         black_hole(move_T)
@@ -1034,9 +1078,7 @@ if __name__ == "__main__":
     jsonfile_path = "json/data_Trans_fill.jsonl"
     trans_path="./trained/Set_Transformer_move_predictor.pth"
 
-    # jsonfile_path = "json/data_Trans_skip.jsonl"
-    # trans_path = "./trained/transformer_move_predictor_6x3_skip.pth"
 
-    # train()
+    train()
 
-    execution_time()
+    # execution_time()

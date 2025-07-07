@@ -13,7 +13,8 @@ from AI_algorithm.GA import  GA_Strategy
 
 import matplotlib.pyplot as plt
 
-from AI_algorithm.Trans import TransformerMovePredictor, Transformer_predict
+
+from AI_algorithm.Trans import  Transformer_predict
 from AI_algorithm.brute_force import recursive_StrategyAndScore
 
 from AI_algorithm.tool.tool import load_best_genome, deal_cards_tool, simulate_insertion_tool
@@ -471,6 +472,7 @@ nhead = 4
 num_encoder_layers = 3
 dim_feedforward = 512
 dropout = 0.1
+from AI_algorithm.SetTrans import Transformer_predict_v, TransformerMovePredictor
 
 model1 = TransformerMovePredictor(
     num_a=num_a_test, num_b=num_b_test, d_model=d_model,
@@ -478,7 +480,7 @@ model1 = TransformerMovePredictor(
     dim_feedforward=dim_feedforward
 ).to(device)
 
-model_path_1 = "../trained/transformer_move_predictor_6x3.pth"
+model_path_1 = "../trained/Set_Transformer_move_predictor.pth"
 model1.load_state_dict(torch.load(model_path_1, map_location=device))
 
 
@@ -494,6 +496,14 @@ def Transformer(A, B):
 
     return move1
 
+
+def Transformer_v(A, B):
+
+
+
+    move1= Transformer_predict_v(A, B, model1, num_a=num_a_test, num_b=num_b_test)
+
+    return move1
 
 
 times=0
@@ -540,8 +550,8 @@ def call_strategy_for_all_permutations(A, B):
     for perm_B in permutations(B):
         perm_B_list = list(perm_B)  # 将元组转换为列表
 
-
-        result = strategy_TrueScore(A,perm_B_list,Transformer(A,perm_B_list))
+        # 注意调用的是哪个ai模型
+        result = strategy_TrueScore(A,perm_B_list,Transformer_v(A,perm_B_list))
         score, _ = recursive_StrategyAndScore(A, B)
         print(f" A:{A}, B: {perm_B_list}, Transformer 结果: {result} Recursive 结果{score}")
 
@@ -549,11 +559,11 @@ def call_strategy_for_all_permutations(A, B):
 
 
 if __name__ == "__main__":
-    A = [11, 13, 3, 10, 12, 6]
-    B = [13, 8, 1]
-    call_strategy_for_all_permutations(A,B)
-    A = [6, 5, 9, 11, 10, 13]
-    B = [6, 3, 7]
-    call_strategy_for_all_permutations(A, B)
+    # A = [11, 13, 3, 10, 12, 6]
+    # B = [13, 8, 1]
+    # call_strategy_for_all_permutations(A,B)
+    # A = [6, 5, 9, 11, 10, 13]
+    # B = [6, 3, 7]
+    # call_strategy_for_all_permutations(A, B)
 
-    # Compare_TwoModel(GA,Transformer,rounds=20000,plot=True)
+    Compare_TwoModel(GA,Transformer_v,rounds=20000,plot=True)
