@@ -94,45 +94,37 @@ class TransformerMovePredictor(nn.Module):
     def __init__(self, input_dim=6, d_model=128, nhead=8, num_encoder_layers=3,
                  dim_feedforward=512, dropout=0.1, num_a=6, num_b=3):
         super(TransformerMovePredictor, self).__init__()
-        # 验证传入的 num_a 和 num_b 是否符合预期
         if num_a != 6 or num_b != 3:
-            raise ValueError(
-                f"TransformerMovePredictor 初始化期望 num_a=6, num_b=3, 但收到了 num_a={num_a}, num_b={num_b}")
+            raise ValueError(f"期望 num_a=6, num_b=3, 但收到了 num_a={num_a}, num_b={num_b}")
 
         self.num_a = num_a
         self.num_b = num_b
-        #  seq_len=6 + 3 = 9
         self.seq_len = num_a + num_b
         self.d_model = d_model
 
-        # 定义线性投影层 (y = xW^T + b)，Linear将输入in_features映射到out_features维度。
-        # 初始化各自独立的权重矩阵 W 和偏置向量 b
-
-        # # 将原始输入特征 (input_dim) 映射到模型的隐藏维度 (d_model)
+        # --- 不变的部分 ---
         self.input_embed = nn.Linear(input_dim, d_model)
-
-        # # 顺序预测头：预测它们两两之间的相对顺序关系 (输出一个 num_b x num_b 的关系矩阵)
-        self.order_head = nn.Linear(num_b * d_model, num_b * num_b)
-
-        # 位置预测头：为每个元素预测其绝对位置或类别 (输出 num_b 个值)
-        self.pos_head = nn.Linear(num_b * d_model, num_b)
-
-        # 定义类别嵌入层，创建查找表,用于区分两种不同类型(输入来自A或者B)的输入
-        self.type_embed = nn.Embedding(2, d_model)
-        # 初始化位置编码模块 max_len用于缓冲
-        self.pos_encoder = PositionalEncoding(d_model, dropout, max_len=self.seq_len + 5)
-
-        # 定义编码器layer和编码器
+        self.type_embed = nn.Embedding(2, d_model)  # 类型嵌入依然重要
         encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead,
                                                    dim_feedforward=dim_feedforward, dropout=dropout,
                                                    batch_first=True)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_encoder_layers)
 
+        # --- 关键改动 1: 移除 PositionalEncoding ---
+        # self.pos_encoder = PositionalEncoding(...) # <- 移除这一行
 
+        # --- 关键改动 2: 重新设计预测头 ---
+        # 旧的预测头接收 num_b * d_model 的扁平化输入，是顺序敏感的。
+        # 新的预测头将处理每个B元素的“局部特征”和B集合的“全局特征”的组合。
+        # 输入维度将是 d_model (局部) + d_model (全局) = 2 * d_model
 
-        # 初始化模型中的参数
+        # 为每个B元素预测一个“排序分”，分数越高代表越优先
+        self.order_head = nn.Linear(2 * d_model, 1)
+
+        # 为每个B元素预测其插入位置
+        self.pos_head = nn.Linear(2 * d_model, 1)
+
         self.init_weights()
-
     def init_weights(self):
         initrange = 0.1
         # 初始化各层权重与偏置
@@ -145,65 +137,58 @@ class TransformerMovePredictor(nn.Module):
         self.pos_head.bias.data.zero_()
 
     def forward(self, src, src_mask=None, src_key_padding_mask=None):
-        # 确保输入数据维度
         if src.dim() == 2:
-            src = src.unsqueeze(-1)  # (批处理大小, 每个样本的长度, 1)
+            src = src.unsqueeze(-1)
 
-        #使用线性层 (input_embed) 将原始的输入特征 (src) 从 input_dim 维度投影到模型的内部维度 d_model。
-        # 然后乘以 math.sqrt(self.d_model) 目的是为了在后续加入位置编码和进行注意力计算时，保持向量的尺度适当
         input_embedded = self.input_embed(src) * math.sqrt(self.d_model)
 
-        # 创建num_a 个 0 组成的类型向量 和 num_b 个 1 组成的类型向量,并将它们拼接,并填入类型查找表(type_embed)中
         type_ids = torch.cat([torch.zeros(self.num_a, dtype=torch.long),
                               torch.ones(self.num_b, dtype=torch.long)], dim=0).to(src.device)
-        type_ids = type_ids.unsqueeze(0).expand(src.size(0), -1)  # (batch_size, seq_len)
+        type_ids = type_ids.unsqueeze(0).expand(src.size(0), -1)
         type_embedded = self.type_embed(type_ids)
 
-        # 逐元素相加词嵌入和类型嵌入形成嵌入向量,这个向量会作为PositionalEncoding中的forward的参数x,来调用forward
         embedded = input_embedded + type_embedded
-        embedded = self.pos_encoder(embedded)
 
-        # 根据嵌入向量返回所有单词的深层上下文表示的张量  memory shape: (batch_size, seq_len=9, d_model)
+        # --- 关键改动 3: 不再使用位置编码 ---
+        # embedded = self.pos_encoder(embedded) # <- 移除这一行
+
         memory = self.transformer_encoder(embedded, mask=src_mask, src_key_padding_mask=src_key_padding_mask)
 
+        # 提取 B 对应的上下文嵌入
+        b_features = memory[:, self.num_a:]  # Shape: (batch_size, num_b, d_model)
 
-        # 提取 B 对应的上下文嵌入后的输出特征 (最后 num_b=3 个)
-        # 使用 self.num_a (现在是6) 作为索引起点
-        b_features = memory[:, self.num_a:]  # (batch_size, num_b=3, d_model)
+        # --- 关键改动 4: 使用对称聚合函数（均值池化）替代 reshape ---
+        # b_features_flat = b_features.reshape(...) # <- 移除这一行，这是顺序敏感的
 
-        #将 b_features 的形状从 (batch_size, 3, d_model) 转换成 (batch_size, 3 * d_model)
-        b_features_flat = b_features.reshape(b_features.size(0), -1)  # (batch_size, num_b * d_model)
+        # 1. 计算B集合的全局特征（置换不变）
+        # 对 num_b 维度求均值，得到代表整个B集合的单个向量
+        b_global_feature = torch.mean(b_features, dim=1, keepdim=True)  # Shape: (batch_size, 1, d_model)
 
-        # 3 个 B 特征元素之间的相对顺序,以及预测它们的插入位置
-        order_logits_flat = self.order_head(b_features_flat)
-        order_logits = order_logits_flat.view(-1, self.num_b, self.num_b)  # (batch_size, 3, 3)
+        # 2. 将全局特征广播，与每个B元素的局部特征拼接
+        # .expand() 会高效地复制数据，而不会实际增加内存消耗
+        b_global_feature_expanded = b_global_feature.expand(-1, self.num_b, -1)  # Shape: (batch_size, num_b, d_model)
 
-        pos_preds = self.pos_head(b_features_flat)  # (batch_size, 3)
+        # 将每个B元素的自身特征（局部）和它所属集合的特征（全局）拼接起来
+        combined_features = torch.cat([b_features, b_global_feature_expanded],
+                                      dim=2)  # Shape: (batch_size, num_b, 2 * d_model)
 
-        return order_logits, pos_preds
+        # 3. 使用新的预测头进行预测
+        # 对每个B元素（现在带有全局上下文）独立进行预测
+        order_scores = self.order_head(combined_features).squeeze(-1)  # Shape: (batch_size, num_b)
+        pos_preds = self.pos_head(combined_features).squeeze(-1)  # Shape: (batch_size, num_b)
+
+        # 注意：order_scores 不再是 3x3 的矩阵，而是一个长度为 3 的分数向量。
+        # 分数越高的项，代表它应该被排在越前面。
+        return order_scores, pos_preds
 
 
 # --- 数据准备和训练逻辑  ---
 # 代表优先级的连续分数 (logits)，解码成的离散项目顺序
-def sort_order(logits):
-    # probs = torch.softmax(logits / temperature, dim=-1)
-    order_indices = torch.argsort(logits, dim=1, descending=True)
-    order = order_indices[:, 0, :]
-
-    if order.dim() == 1:
-        order = order.unsqueeze(0)
-
-    batch_size = order.shape[0]
-    num_b = order.shape[1]  # Should be 3
-    valid_permutations = torch.stack([torch.randperm(num_b) for _ in range(batch_size)]).to(order.device)
-
-    is_invalid = torch.zeros(batch_size, dtype=torch.bool, device=order.device)
-    for b in range(batch_size):
-        if len(torch.unique(order[b])) != num_b:
-            is_invalid[b] = True
-
-    order[is_invalid] = valid_permutations[is_invalid]
-    return order
+def sort_order(order_scores):
+    # order_scores 的 shape 是 (batch_size, num_b)
+    # 直接对分数进行 argsort 即可得到顺序
+    order_indices = torch.argsort(order_scores, dim=1, descending=True)
+    return order_indices
 
 
 
@@ -1047,7 +1032,7 @@ if __name__ == "__main__":
 
     # Todo 训练前注意路径!!!
     jsonfile_path = "json/data_Trans_fill.jsonl"
-    trans_path="./trained/transformer_move_predictor_6x3.pth"
+    trans_path="./trained/Set_Transformer_move_predictor.pth"
 
     # jsonfile_path = "json/data_Trans_skip.jsonl"
     # trans_path = "./trained/transformer_move_predictor_6x3_skip.pth"
