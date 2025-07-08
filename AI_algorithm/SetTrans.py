@@ -120,6 +120,8 @@ class TransformerMovePredictor(nn.Module):
 
         # 新: 让模型为每个B元素，都预测一个长度为num_b的分数向量
         #    这个向量代表该元素被放在第0、第1、第2个位置的得分
+
+        self.pos_encoder = PositionalEncoding(d_model, dropout, max_len=self.seq_len)
         self.order_head = nn.Linear(2 * d_model, num_b)
 
         self.pos_head = nn.Linear(2 * d_model, 1)
@@ -150,7 +152,7 @@ class TransformerMovePredictor(nn.Module):
         embedded = input_embedded + type_embedded
 
         # --- 关键改动 3: 不再使用位置编码 ---
-        # embedded = self.pos_encoder(embedded) # <- 移除这一行
+        embedded = self.pos_encoder(embedded)
 
         memory = self.transformer_encoder(embedded, mask=src_mask, src_key_padding_mask=src_key_padding_mask)
 
