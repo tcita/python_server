@@ -13,8 +13,8 @@ from AI_algorithm.GA import  GA_Strategy
 
 import matplotlib.pyplot as plt
 
-
-from AI_algorithm.Trans import  Transformer_predict
+from AI_algorithm.Hybrid_Trans import prepare_data_hybrid_transformer, HybridTransformer, Transformer_predict_hybrid
+from AI_algorithm.Trans import Transformer_predict, Transformer_predict_TTA, TransformerMovePredictor
 from AI_algorithm.brute_force import recursive_StrategyAndScore
 
 from AI_algorithm.tool.tool import load_best_genome, deal_cards_tool, simulate_insertion_tool
@@ -472,7 +472,7 @@ nhead = 4
 num_encoder_layers = 3
 dim_feedforward = 512
 dropout = 0.1
-from AI_algorithm.SetTrans import Transformer_predict_v, TransformerMovePredictor
+
 
 model1 = TransformerMovePredictor(
     num_a=num_a_test, num_b=num_b_test, d_model=d_model,
@@ -480,7 +480,7 @@ model1 = TransformerMovePredictor(
     dim_feedforward=dim_feedforward
 ).to(device)
 
-model_path_1 = "../trained/Set_Transformer_move_predictor.pth"
+model_path_1 = "../trained/transformer_move_predictor_6x3.pth"
 model1.load_state_dict(torch.load(model_path_1, map_location=device))
 
 
@@ -494,16 +494,30 @@ def Transformer(A, B):
 
     move1= Transformer_predict(A, B, model1, num_a=num_a_test, num_b=num_b_test)
 
-    return move1
-
-
-def Transformer_v(A, B):
-
-
-
-    move1= Transformer_predict_v(A, B, model1, num_a=num_a_test, num_b=num_b_test)
 
     return move1
+
+
+
+
+# 初始化我们最终的混合模型
+model2 = HybridTransformer(
+    input_dim=6, d_model=256, nhead=4,
+    num_encoder_layers=3,
+    dim_feedforward=512, dropout=0.1,
+    num_a=6, num_b=3
+).to(device)
+
+model_path_2 = "../trained/Hybrid_Transformer.pth"
+model2.load_state_dict(torch.load(model_path_2, map_location=device))
+
+def Hybrid_Transformer(A, B):
+
+
+
+    move2= Transformer_predict_hybrid(A, B, model2, num_a=num_a_test, num_b=num_b_test)
+
+    return move2
 
 
 times=0
@@ -511,8 +525,8 @@ def Transformer_P_GA(A, B):
     global  times
 
 
-    move1= Transformer_predict(A, B, model1, num_a=num_a_test, num_b=num_b_test)
-
+    # move1= Transformer_predict(A, B, model1, num_a=num_a_test, num_b=num_b_test)
+    move1 = Transformer_predict_hybrid(A, B, model2, num_a=num_a_test, num_b=num_b_test)
 
     # Todo 如果要结合GA优化预测结果  则取消以下注释
     score1=strategy_TrueScore(A,B,move1)
@@ -551,7 +565,7 @@ def call_strategy_for_all_permutations(A, B):
         perm_B_list = list(perm_B)  # 将元组转换为列表
 
         # 注意调用的是哪个ai模型
-        result = strategy_TrueScore(A,perm_B_list,Transformer_v(A,perm_B_list))
+        result = strategy_TrueScore(A,perm_B_list,Hybrid_Transformer(A,perm_B_list))
         score, _ = recursive_StrategyAndScore(A, B)
         print(f" A:{A}, B: {perm_B_list}, Transformer 结果: {result} Recursive 结果{score}")
 
@@ -566,4 +580,4 @@ if __name__ == "__main__":
     # B = [6, 3, 7]
     # call_strategy_for_all_permutations(A, B)
 
-    Compare_TwoModel(GA,Transformer_v,rounds=20000,plot=True)
+    Compare_TwoModel(GA,Transformer_P_GA,rounds=20000,plot=True)

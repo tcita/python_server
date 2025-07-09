@@ -1,3 +1,4 @@
+import itertools
 import json
 import math
 import time
@@ -633,7 +634,6 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
 
 
 
-#需要检查
 
 
 import torch
@@ -642,14 +642,6 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 
 
-# 假设以下函数和类已在别处定义
-# from your_module import (
-#     TransformerMovePredictor,
-#     strategy_TrueScore,
-#     GA_Strategy,
-#     calculate_future_score,
-#     sample_order
-# )
 
 def _run_transformer_inference(TR_model, A_batch, B_batch, model_inference_indices, num_a, num_b, device):
     """
@@ -828,6 +820,129 @@ def Transformer_predict_batch_plus_GA(A_batch, B_batch, genomeforassist, TR_mode
 _json_cache = {}
 
 
+def Transformer_predict_TTA(A, B, model, num_a=6, num_b=3, num_permutations=None):
+    """
+    使用TTA（测试时增强）技术进行预测，以实现对B的置换不变性。
+
+    :param A: 列表A
+    :param B: 列表B
+    :param model: 训练好的Transformer模型
+    :param num_permutations: 使用的B的排列数量。如果为None，则使用全部排列 (num_b!)
+    """
+    try:
+        if not isinstance(model, TransformerMovePredictor):
+            raise ValueError(f"需要 TransformerMovePredictor 实例, 但得到 {type(model)}")
+
+        model.eval()
+
+        # --- TTA核心 ---
+        # 1. 生成B的置换
+        b_indices = list(range(num_b))
+
+        # 对于num_b=3，总共有 3! = 6 种排列，我们可以全部使用
+        all_permutations = list(itertools.permutations(b_indices))
+
+        if num_permutations is not None and num_permutations < len(all_permutations):
+            # 如果指定了数量，就随机选择几个排列
+            import random
+            permutations_to_use = random.sample(all_permutations, num_permutations)
+        else:
+            permutations_to_use = all_permutations
+
+        all_order_logits = []
+        all_pos_preds = []
+
+        # 2. 对每个置换进行特征工程和预测
+        for p in permutations_to_use:
+            # p 是一个索引元组, 例如 (1, 0, 2)
+            B_permuted = [B[i] for i in p]
+
+            # --- 对 B_permuted 进行完整的特征工程 ---
+            # (这部分代码与您原来的 Transformer_predict 函数完全相同)
+            B_counter = {val: B_permuted.count(val) for val in B_permuted}
+            B_duplicates = sum(count - 1 for count in B_counter.values())
+            intersection = set(A) & set(B_permuted)
+            intersection_size = len(intersection)
+            positions_in_A = {a_val: i for i, a_val in enumerate(A)}
+            enhanced_sequence = []
+            A_min, A_max, B_min_p, B_max_p = min(A), max(A), min(B_permuted), max(B_permuted)
+            A_mean, A_std = np.mean(A), np.std(A)
+
+            # A序列特征 (不变)
+            for i, val in enumerate(A):
+                relative_position = i / num_a
+                range_size = A_max - A_min
+                min_max_scaled = (val - A_min) / range_size if range_size > 0 else 0.0
+                is_extreme = 1.0 if (val == A_min or val == A_max) else 0.0
+                z_score = (val - A_mean) / A_std if A_std > 0 else 0.0
+                enhanced_sequence.append(
+                    [val / sum(A), is_extreme, z_score, relative_position, min_max_scaled, intersection_size / num_a])
+
+            # B序列特征 (根据B_permuted计算)
+            for i, val in enumerate(B_permuted):
+                is_in_A = 1.0 if val in A else 0.0
+                position_in_A = positions_in_A.get(val, -1)
+                relative_position_in_A = position_in_A / num_a if position_in_A >= 0 else -0.1
+                is_extreme = 1.0 if (val == B_min_p or val == B_max_p) else 0.0
+                remaining_B = B_permuted[i + 1:] if i < len(B_permuted) - 1 else []
+                future_score = calculate_future_score(A, remaining_B)
+                future_score_ratio = future_score / (sum(A) + sum(B)) if (sum(A) + sum(B)) > 0 else 0
+
+                B_mean = np.mean(B)
+                B_std = np.std(B)
+                if B_std > 0:
+                    z_score_in_B = (val - B_mean) / B_std
+                else:
+                    z_score_in_B = 0.0  # 如果B中所有元素都相同，标准差为0，则Z-score为0
+
+                enhanced_sequence.append(
+                    [val / sum(B), z_score_in_B, is_in_A, relative_position_in_A, B_duplicates / num_b,
+                     is_extreme])
+
+            input_sequence = np.array(enhanced_sequence, dtype=np.float32)
+            input_tensor = torch.FloatTensor(input_sequence).unsqueeze(0).to(device)
+
+            with torch.no_grad():
+                order_logits_p, pos_preds_p = model(input_tensor)  # shape: (1, 3, 3) 和 (1, 3)
+
+            # --- 3. 关键：还原顺序 (Un-permute) ---
+            # 模型的输出是针对 B_permuted 的，我们需要将其还原到 B 的原始顺序上
+            # 这样才能正确地对它们进行平均
+
+            # 计算逆置换，例如 p=(1,0,2) -> p_inv=(1,0,2)
+            p_inv = torch.empty_like(torch.tensor(p))
+            p_inv[torch.tensor(p)] = torch.arange(num_b)
+
+            # 还原 order_logits 的行（代表B中元素）
+            unpermuted_order_logits = order_logits_p[:, p_inv, :]
+            # 还原 pos_preds 的顺序
+            unpermuted_pos_preds = pos_preds_p[:, p_inv]
+
+            all_order_logits.append(unpermuted_order_logits)
+            all_pos_preds.append(unpermuted_pos_preds)
+
+        # --- 4. 聚合结果 ---
+        # 对所有置换的结果取平均，消除顺序偏见
+        avg_order_logits = torch.stack(all_order_logits).mean(dim=0)
+        avg_pos_preds = torch.stack(all_pos_preds).mean(dim=0)
+
+        # --- 使用聚合后的结果生成最终策略 ---
+        pred_order_indices = sort_order(avg_order_logits).squeeze(0).cpu().numpy()
+        pred_moves_raw = avg_pos_preds.squeeze(0).cpu().numpy()
+
+        pos_range_base = len(A)
+        pred_moves_clipped = [int(np.clip(p, 0, pos_range_base + k)) for k, p in enumerate(pred_moves_raw)]
+        best_moves = [[int(pred_order_indices[k]), pred_moves_clipped[k]] for k in range(num_b)]
+
+        return best_moves
+
+    except Exception as e:
+        print(f"使用 TTA-Transformer 预测时出错: A={A}, B={B}")
+        print(f"错误信息: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        print("返回默认策略")
+        return [[i, 1] for i in range(len(B))]
 def train():
     """
     加载训练数据并启动 Transformer(6x3) 训练过程
