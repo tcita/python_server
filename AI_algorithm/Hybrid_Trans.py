@@ -5,12 +5,9 @@ import signal
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.optim.lr_scheduler import CosineAnnealingLR
 import numpy as np
 
-from AI_algorithm.tool.tool import calculate_future_score
-
-
+from AI_algorithm.tool.tool import  calculate_future_score_new
 
 # --- 全局设置 ---
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -158,9 +155,9 @@ def prepare_data_hybrid_transformer(sample: dict, num_a=6, num_b=3):
         relative_position_in_A = position_in_A / num_a if position_in_A >= 0 else -0.1
         is_extreme = 1.0 if (val == B_min or val == B_max) else 0.0
         other_B = B[:i] + B[i + 1:]
-        sorted_other_B = sorted(other_B)
+        # sorted_other_B = sorted(other_B)
         # TODO:修正future_score
-        future_score = calculate_future_score(A, sorted_other_B)
+        future_score = calculate_future_score_new(A, other_B)
         future_score_ratio = future_score / (sum(A) + sum(B)) if (sum(A) + sum(B)) > 0 else 0
         enhanced_sequence.append([
             val / sum(B), future_score_ratio, is_in_A,

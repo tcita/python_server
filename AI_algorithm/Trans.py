@@ -8,7 +8,7 @@ import torch.nn as nn
 
 from AI_algorithm.GA import GA_Strategy
 from AI_algorithm.brute_force import recursive_Strategy
-from AI_algorithm.tool.tool import calculate_score_by_strategy, calculate_future_score, load_best_genome, \
+from AI_algorithm.tool.tool import calculate_score_by_strategy, calculate_future_score_default, load_best_genome, \
     deal_cards_tool, strategy_TrueScore
 
 
@@ -282,7 +282,7 @@ def prepare_data_transformer(sample: dict, num_a=6, num_b=3):
         # 计算未来得分特征
         # 假设当前B[i]已经被处理，计算剩余B的未来得分
         remaining_B = B[i + 1:] if i < len(B) - 1 else []
-        future_score = calculate_future_score(A, remaining_B)
+        future_score = calculate_future_score_default(A, remaining_B)
         future_score_ratio = future_score / (sum(A) + sum(B)) if (sum(A) + sum(B)) > 0 else 0
 
         enhanced_sequence.append([
@@ -582,7 +582,7 @@ def Transformer_predict(A, B, model, num_a=6, num_b=3):
             # 计算未来得分特征
             # 假设当前B[i]已经被处理，计算剩余B的未来得分
             remaining_B = B[i + 1:] if i < len(B) - 1 else []
-            future_score = calculate_future_score(A, remaining_B)
+            future_score = calculate_future_score_default(A, remaining_B)
             future_score_ratio = future_score / (sum(A) + sum(B)) if (sum(A) + sum(B)) > 0 else 0
 
             enhanced_sequence.append([
@@ -689,7 +689,7 @@ def _run_transformer_inference(TR_model, A_batch, B_batch, model_inference_indic
             relative_position_in_A = position_in_A / num_a if position_in_A >= 0 else -0.1
             is_extreme = 1.0 if (val == B_min or val == B_max) else 0.0
             remaining_B = B[i + 1:] if i < len(B) - 1 else []
-            future_score = calculate_future_score(A, remaining_B)
+            future_score = calculate_future_score_default(A, remaining_B)
             future_score_ratio = future_score / (sum(A) + sum(B)) if (sum(A) + sum(B)) > 0 else 0
             enhanced_sequence.append([
                 val / sum(B), future_score_ratio, is_in_A,
@@ -885,7 +885,7 @@ def Transformer_predict_TTA(A, B, model, num_a=6, num_b=3, num_permutations=None
                 relative_position_in_A = position_in_A / num_a if position_in_A >= 0 else -0.1
                 is_extreme = 1.0 if (val == B_min_p or val == B_max_p) else 0.0
                 remaining_B = B_permuted[i + 1:] if i < len(B_permuted) - 1 else []
-                future_score = calculate_future_score(A, remaining_B)
+                future_score = calculate_future_score_default(A, remaining_B)
                 future_score_ratio = future_score / (sum(A) + sum(B)) if (sum(A) + sum(B)) > 0 else 0
 
                 B_mean = np.mean(B)

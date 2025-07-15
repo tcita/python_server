@@ -187,7 +187,73 @@ def complete_best_moves(best_moves):
 _future_score_cache = {}
 
 
-def calculate_future_score(A, remaining_B):
+def calculate_future_score_new(A_origin, remaining_B):
+    """
+    根据一个固定的、有序的交集列表，迭代地处理列表A，并累加一个分数。
+
+    工作流程:
+    1. 找到A和B的交集，并根据元素在A中的原始顺序，创建一个有序的交集列表。
+    2. 遍历这个有序的交集列表。
+    3. 对于每一个交集元素，如果在当前的A中能找到它：
+       a. 计算其左侧和与右侧和。
+       b. 将较大的和累加到 'future_score'。
+       c. 从A中删除对应和较大的那一串序列。
+    4. 如果在当前A中找不到该元素（因为它已被删除），则跳过。
+    5. 返回最终的 'future_score'。
+
+    :param A: 待处理和修改的列表，其元素顺序很重要。
+    :param B: 用于查找交集的参考列表。
+    :return: 计算出的累计分数 future_score。
+    """
+    future_score = 0
+    A=A_origin.copy()
+    B=remaining_B.copy()
+
+    intersection_set = set(A).intersection(set(B))
+
+    # 检查B中是否有重复元素
+    if len(B) != len(set(B)):
+        return sum(A) + sum(B)
+
+    # 如果没有交集，直接返回0
+    if not intersection_set:
+        return 0
+
+
+
+
+    # 步骤1: 按照A中的顺序，创建交集元素的处理列表
+    # 这个列表在后续操作中是固定的，不会改变
+    ordered_intersection_to_process = [elem for elem in A if elem in intersection_set]
+
+    # 步骤2: 遍历这个固定的处理列表
+    for item in ordered_intersection_to_process:
+
+        # 步骤3 & 4: 检查元素是否仍在当前的A中，如果不在则跳过
+        try:
+            # .index() 会在找到元素时返回其索引，找不到时触发 ValueError
+            current_index = A.index(item)
+        except ValueError:
+            # 元素已在之前的步骤中被删除，跳到下一个item
+            continue
+
+        # 元素存在，计算左右和
+        left_sum = sum(A[:current_index + 1])+item
+        right_sum = sum(A[current_index:])+item
+
+        # 将较大的和累加进 future_score
+        future_score += max(left_sum, right_sum)
+
+        # 判断并删除和较大的那一侧
+        if left_sum >= right_sum:
+            del A[:current_index + 1]
+        else:
+            del A[current_index:]
+
+    # 步骤5: 返回最终结果
+    return future_score
+
+def calculate_future_score_default(A, remaining_B):
     # 缓存键
     cache_key = (tuple(A), tuple(remaining_B))
 
@@ -265,6 +331,8 @@ def calculate_future_score(A, remaining_B):
         # 缓存结果
     _future_score_cache[cache_key] = future_score
     return future_score
+
+
 def get_best_insertion_score(A, card):
     max_score = -float('inf')
     best_pos = -1

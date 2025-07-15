@@ -7,7 +7,7 @@ import json
 import os
 
 
-from AI_algorithm.tool.tool import calculate_future_score, simulate_insertion_tool
+from AI_algorithm.tool.tool import calculate_future_score_default, simulate_insertion_tool
 
 # Todo 训练前注意路径!!!
 jsonfile_path = "AI_algorithm/json/data_GA_fill.json"
@@ -117,7 +117,7 @@ def GA_Strategy(genome, A, B):
                 #特征计算
                 score, removal_length, new_length, _, new_A = simulate_insertion_tool(A_copy, card, pos)
                 sum_new_A = sum(new_A)
-                future_score = calculate_future_score(new_A, remaining_B)
+                future_score = calculate_future_score_default(new_A, remaining_B)
 
                 # 需要标准化
                 features = [

@@ -573,11 +573,11 @@ def call_strategy_for_all_permutations(A, B):
 
 
 if __name__ == "__main__":
-    # A = [11, 13, 3, 10, 12, 6]
-    # B = [13, 8, 1]
-    # call_strategy_for_all_permutations(A,B)
-    # A = [6, 5, 9, 11, 10, 13]
-    # B = [6, 3, 7]
-    # call_strategy_for_all_permutations(A, B)
+    A = [11, 13, 3, 10, 12, 6]
+    B = [13, 8, 1]
+    call_strategy_for_all_permutations(A,B)
+    A = [6, 5, 9, 11, 10, 13]
+    B = [6, 3, 7]
+    call_strategy_for_all_permutations(A, B)
 
-    Compare_TwoModel(GA,Transformer_P_GA,rounds=20000,plot=True)
+    Compare_TwoModel(GA,Hybrid_Transformer,rounds=10000,plot=True)
