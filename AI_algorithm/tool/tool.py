@@ -187,72 +187,95 @@ def complete_best_moves(best_moves):
 _future_score_cache = {}
 
 
-def calculate_future_score_new(A_origin, remaining_B):
+def calculate_future_score_new(A_origin, B_origin):
     """
-    根据一个固定的、有序的交集列表，迭代地处理列表A，并累加一个分数。
+    通过一个更智能的动态贪心算法，来启发式地估算未来的潜在得分。
 
-    工作流程:
-    1. 找到A和B的交集，并根据元素在A中的原始顺序，创建一个有序的交集列表。
-    2. 遍历这个有序的交集列表。
-    3. 对于每一个交集元素，如果在当前的A中能找到它：
-       a. 计算其左侧和与右侧和。
-       b. 将较大的和累加到 'future_score'。
-       c. 从A中删除对应和较大的那一串序列。
-    4. 如果在当前A中找不到该元素（因为它已被删除），则跳过。
-    5. 返回最终的 'future_score'。
+    这个函数模拟了一个更优的贪心玩家的行为。在每一步，它会：
+    1. 扫描当前盘面（列表A）和剩余手牌（列表B），找出所有可能的匹配。
+    2. 对每一个可能的匹配，估算其能带来的“即时收益”。
+    3. 选择那个“即时收益”最高的匹配来“打出”。
+    4. 将这一步的得分累加到总分中，并更新盘面（从A中移除序列，从B中移除牌）。
+    5. 重复以上步骤，直到没有更多的匹配可以产生。
 
-    :param A: 待处理和修改的列表，其元素顺序很重要。
-    :param B: 用于查找交集的参考列表。
-    :return: 计算出的累计分数 future_score。
+    这个版本比旧版本更优，因为它不再依赖于匹配牌在A中的初始固定顺序，
+    而是动态地在每一步都做出当前最优的贪心选择。
+
+    :param A_origin: 初始的盘面列表A。
+    :param B_origin: 初始的手牌列表B。
+    :return: 计算出的累计未来得分 future_score。
     """
-    future_score = 0
-    A=A_origin.copy()
-    B=remaining_B.copy()
+    # --- 1. 初始化和处理边界情况 ---
+    A = A_origin.copy()
+    B = B_origin.copy()
+    total_future_score = 0
 
-    intersection_set = set(A).intersection(set(B))
+    # 如果B中有重复的牌，
 
-    # 检查B中是否有重复元素
-    if len(B) != len(set(B)):
-        return sum(A) + sum(B)
+    if len(B) != len(set(B)) and set(A).isdisjoint(set(B)):
+        return  sum(A) + sum(B)
 
-    # 如果没有交集，直接返回0
-    if not intersection_set:
-        return 0
+    # 循环执行贪心策略，直到无法再进行任何匹配
+    while True:
+        # --- 2. 在当前状态下，寻找所有可能的下一步动作 ---
+        current_intersection = set(A).intersection(set(B))
 
+        # 如果当前没有牌可以匹配，则贪心过程结束
+        if not current_intersection:
+            break
 
+        potential_moves = []
+        for item in current_intersection:
+            try:
+                # 找到该牌在当前A中的位置
+                index = A.index(item)
 
+                # 估算打出这张牌的“即时收益”
+                # 注意：这里的得分计算方式与游戏规则中的单步得分计算一致
+                left_sum = sum(A[:index + 1]) + item
+                right_sum = sum(A[index:]) + item
 
-    # 步骤1: 按照A中的顺序，创建交集元素的处理列表
-    # 这个列表在后续操作中是固定的，不会改变
-    ordered_intersection_to_process = [elem for elem in A if elem in intersection_set]
+                # 将这个可能的“动作”及其预估收益记录下来
+                potential_moves.append({
+                    "item": item,
+                    "index": index,
+                    "score": max(left_sum, right_sum)  # 贪心策略：选择收益大的那一侧
+                })
+            except ValueError:
+                # 理论上不会发生，因为item来自交集，但作为健壮性保障
+                continue
 
-    # 步骤2: 遍历这个固定的处理列表
-    for item in ordered_intersection_to_process:
+        # 如果没有有效的潜在动作，则结束
+        if not potential_moves:
+            break
 
-        # 步骤3 & 4: 检查元素是否仍在当前的A中，如果不在则跳过
-        try:
-            # .index() 会在找到元素时返回其索引，找不到时触发 ValueError
-            current_index = A.index(item)
-        except ValueError:
-            # 元素已在之前的步骤中被删除，跳到下一个item
-            continue
+        # --- 3. 做出贪心选择：选择预估收益最高的动作 ---
+        potential_moves.sort(key=lambda x: x['score'], reverse=True)
+        best_next_move = potential_moves[0]
 
-        # 元素存在，计算左右和
-        left_sum = sum(A[:current_index + 1])+item
-        right_sum = sum(A[current_index:])+item
+        # --- 4. 执行选择的动作并更新状态 ---
 
-        # 将较大的和累加进 future_score
-        future_score += max(left_sum, right_sum)
+        # 累加这一步的得分
+        total_future_score += best_next_move['score']
 
-        # 判断并删除和较大的那一侧
-        if left_sum >= right_sum:
-            del A[:current_index + 1]
+        # 从A中移除对应的序列
+        item_to_play = best_next_move['item']
+        index_in_A = best_next_move['index']
+
+        # 重新计算左右和以决定删除哪一侧（确保逻辑清晰）
+        left_sum_for_del = sum(A[:index_in_A + 1]) + item_to_play
+        right_sum_for_del = sum(A[index_in_A:]) + item_to_play
+
+        if left_sum_for_del >= right_sum_for_del:
+            del A[:index_in_A + 1]
         else:
-            del A[current_index:]
+            del A[index_in_A:]
 
-    # 步骤5: 返回最终结果
-    return future_score
+        # 从手牌B中移除已经打出的牌
+        B.remove(item_to_play)
 
+    # --- 5. 返回最终累计的启发式总分 ---
+    return total_future_score
 def calculate_future_score_default(A, remaining_B):
     # 缓存键
     cache_key = (tuple(A), tuple(remaining_B))
