@@ -579,5 +579,5 @@ if __name__ == "__main__":
     # A = [6, 5, 9, 11, 10, 13]
     # B = [6, 3, 7]
     # call_strategy_for_all_permutations(A, B)
-    #
+
     Compare_TwoModel(Transformer, SetProcessor_Transformer, rounds=20000, plot=True)

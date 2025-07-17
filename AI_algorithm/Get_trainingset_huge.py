@@ -88,9 +88,9 @@ def generate_training_data(num_samples=50000):
 
     # 合并所有批次文件
     print("合并批次文件...")
-    merge_batch_files(num_batches, "json/data_Trans_skip.json", temp_file_prefix)
+    merge_batch_files(num_batches, "json/data_Attention_Map.json", temp_file_prefix)
     print("数据集生成完成！")
 
 
 if __name__ == "__main__":
-    generate_training_data(num_samples=5000000)
+    generate_training_data(num_samples=10000)

@@ -210,10 +210,10 @@ def calculate_future_score_new(A_origin, B_origin):
     B = B_origin.copy()
     total_future_score = 0
 
-    # 如果B中有重复的牌，
-
-    if len(B) != len(set(B)) and set(A).isdisjoint(set(B)):
-        return  sum(A) + sum(B)
+    # # 如果B中有重复的牌，
+    #
+    # if len(B) != len(set(B)) and set(A).isdisjoint(set(B)):
+    #     return  sum(A) + sum(B)
 
     # 循环执行贪心策略，直到无法再进行任何匹配
     while True:
