@@ -226,14 +226,14 @@ def evaluate_genome(genome, num_rounds, seed_base):
 
 
 
-import functools  # <== 在文件顶部导入
+import functools  
 
 
-# 函数签名完全不变！
+
 def evaluate_genomes_return_fitness(population, num_rounds):
     """并行评估多个基因组"""
 
-    # ====================【核心修改】====================
+
     # 1. 准备一个“空白”的评估函数
     #    这个函数缺少 seed_base 参数，我们不能直接调用它
     base_eval_func = evaluate_genome
@@ -267,7 +267,7 @@ import random
 def island_model_evolution(population, fitnesses, pop_size, tournament_size, mutation_strength, islands=3,
                            migration_rate=0.1):
     """
-    【高效版】实现岛屿模型进化。
+    实现岛屿模型进化。
     该函数只负责生成下一代种群，不进行任何适应度评估。
     迁移策略：每个岛屿随机选择个体进行迁移，替换目标岛屿中适应度最差的个体。
 
@@ -307,7 +307,7 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
         elites = [island_populations[i][idx] for idx in sorted_indices[:elitism_count]]
 
         selected = []
-        # 修正：锦标赛选择的候选者应来自整个岛屿，而不是非精英
+        # 锦标赛选择的候选者应来自整个岛屿，而不是非精英
         for _ in range(len(island_populations[i]) - elitism_count):
             candidates_indices = random.sample(range(len(island_populations[i])), tournament_size)
             winner_idx = max(candidates_indices, key=lambda idx: island_fitnesses[i][idx])
@@ -323,7 +323,7 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
 
         new_island_populations.append(next_population)
 
-    # 🛑 移除了第一次评估调用
+
 
     # 3. 迁移过程
     # =================================================================
@@ -358,7 +358,7 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
 
     new_island_populations = migrated_populations
 
-    # 🛑 移除了第二次评估调用
+
 
     # 4. 合并所有岛屿种群
     # =================================================================
@@ -366,9 +366,7 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
     for pop in new_island_populations:
         new_population.extend(pop)
 
-    # 🛑 移除了基于适应度的排序和裁剪，因为我们没有新适应度。
-    #    裁剪可以在主循环评估后进行，或者直接返回合并后的种群。
-    #    这里我们直接返回，让主循环决定如何处理超额部分。
+
     if len(new_population) > pop_size:
         new_population = new_population[:pop_size]
 
@@ -376,81 +374,81 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
     return new_population
 
 
-# 差分进化算法实现(不使用)
-def differential_evolution(population, fitnesses, pop_size, F=0.8, CR=0.5, num_rounds=1000,
-                           generation=0, max_generations=60):
-    """
-    实现差分进化算法 (Differential Evolution Algorithm)
+# # 差分进化算法实现(不使用)
+# def differential_evolution(population, fitnesses, pop_size, F=0.8, CR=0.5, num_rounds=1000,
+#                            generation=0, max_generations=60):
+#     """
+#     实现差分进化算法 (Differential Evolution Algorithm)
 
-    差分进化是一种基于种群的全局优化算法，通过变异、交叉、选择三个步骤
-    不断改进种群质量，寻找问题的最优解。
+#     差分进化是一种基于种群的全局优化算法，通过变异、交叉、选择三个步骤
+#     不断改进种群质量，寻找问题的最优解。
 
-    算法特点：
-    - 利用种群个体间的差异信息指导搜索方向
-    - 自适应调整参数以平衡全局探索和局部开发
-    - 采用贪心选择策略确保种群质量单调提升
+#     算法特点：
+#     - 利用种群个体间的差异信息指导搜索方向
+#     - 自适应调整参数以平衡全局探索和局部开发
+#     - 采用贪心选择策略确保种群质量单调提升
 
-    参数说明：
-    - population: 当前种群，二维列表，每个子列表代表一个个体的基因序列
-    - fitnesses: 当前种群的适应度值列表，数值越小表示个体越优秀（最小化问题）
-    - pop_size: 种群规模，即个体数量
-    - F: 缩放因子/变异因子 (典型值:0.5-1.0)
-         控制变异向量的步长大小，值越大变异幅度越大
-    - CR: 交叉概率 (典型值:0.1-0.9)
-          控制试验向量从变异向量继承基因的概率
-    - num_rounds: 适应度评估轮数，用于fitness函数的参数
-    - generation: 当前进化代数，用于参数自适应调整
-    - max_generations: 最大进化代数，用于计算进化进度
+#     参数说明：
+#     - population: 当前种群，二维列表，每个子列表代表一个个体的基因序列
+#     - fitnesses: 当前种群的适应度值列表，数值越小表示个体越优秀（最小化问题）
+#     - pop_size: 种群规模，即个体数量
+#     - F: 缩放因子/变异因子 (典型值:0.5-1.0)
+#          控制变异向量的步长大小，值越大变异幅度越大
+#     - CR: 交叉概率 (典型值:0.1-0.9)
+#           控制试验向量从变异向量继承基因的概率
+#     - num_rounds: 适应度评估轮数，用于fitness函数的参数
+#     - generation: 当前进化代数，用于参数自适应调整
+#     - max_generations: 最大进化代数，用于计算进化进度
 
-    返回值：
-    - new_population: 进化后的新种群
-    - new_fitnesses: 新种群对应的适应度值
-    """
-    # 动态调整F和CR参数
-    # progress_ratio需要＞0
-    progress_ratio = generation / max_generations if max_generations > 0 else 0.5
-    adaptive_F = F * (1.0 - 0.3 * progress_ratio)  # F从初始值逐渐降低30%
-    adaptive_CR = min(0.9, CR + 0.3 * progress_ratio)  # CR从初始值逐渐增加，最大到0.9
+#     返回值：
+#     - new_population: 进化后的新种群
+#     - new_fitnesses: 新种群对应的适应度值
+#     """
+#     # 动态调整F和CR参数
+#     # progress_ratio需要＞0
+#     progress_ratio = generation / max_generations if max_generations > 0 else 0.5
+#     adaptive_F = F * (1.0 - 0.3 * progress_ratio)  # F从初始值逐渐降低30%
+#     adaptive_CR = min(0.9, CR + 0.3 * progress_ratio)  # CR从初始值逐渐增加，最大到0.9
 
-    new_population = []
+#     new_population = []
 
-    # 为每个个体进行差分进化
-    for i in range(pop_size):
-        target = population[i]
+#     # 为每个个体进行差分进化
+#     for i in range(pop_size):
+#         target = population[i]
 
-        # 随机选择三个不同的个体，且与当前个体不同
-        candidates = list(range(pop_size))
-        candidates.remove(i)
-        a, b, c = random.sample(candidates, 3)
+#         # 随机选择三个不同的个体，且与当前个体不同
+#         candidates = list(range(pop_size))
+#         candidates.remove(i)
+#         a, b, c = random.sample(candidates, 3)
 
-        # 选择的三个个体
-        x_a = population[a]
-        x_b = population[b]
-        x_c = population[c]
+#         # 选择的三个个体
+#         x_a = population[a]
+#         x_b = population[b]
+#         x_c = population[c]
 
-        # 生成突变向量，使用动态调整的F
-        mutant = [x_a[j] + adaptive_F * (x_b[j] - x_c[j]) for j in range(len(target))]
+#         # 生成突变向量，使用动态调整的F
+#         mutant = [x_a[j] + adaptive_F * (x_b[j] - x_c[j]) for j in range(len(target))]
 
-        # 交叉操作，使用动态调整的CR
-        trial = []
-        for j in range(len(target)):
-            if random.random() < adaptive_CR or j == random.randint(0, len(target)-1):
-                trial.append(mutant[j])
-            else:
-                trial.append(target[j])
+#         # 交叉操作，使用动态调整的CR
+#         trial = []
+#         for j in range(len(target)):
+#             if random.random() < adaptive_CR or j == random.randint(0, len(target)-1):
+#                 trial.append(mutant[j])
+#             else:
+#                 trial.append(target[j])
 
-        new_population.append(trial)
+#         new_population.append(trial)
 
-    # 评估新种群
-    new_fitnesses = evaluate_genomes_return_fitness(new_population, num_rounds)
+#     # 评估新种群
+#     new_fitnesses = evaluate_genomes_return_fitness(new_population, num_rounds)
 
-    # 选择操作：如果新个体更好，则替换旧个体
-    for i in range(pop_size):
-        if fitnesses[i] > new_fitnesses[i]:
-            new_population[i] = population[i]
-            new_fitnesses[i] = fitnesses[i]
+#     # 选择操作：如果新个体更好，则替换旧个体
+#     for i in range(pop_size):
+#         if fitnesses[i] > new_fitnesses[i]:
+#             new_population[i] = population[i]
+#             new_fitnesses[i] = fitnesses[i]
 
-    return new_population, new_fitnesses
+#     return new_population, new_fitnesses
 
 
 
