@@ -67,7 +67,7 @@ class PositionalEncoding(nn.Module):
 
 
 # ==============================================================================
-# 步骤 1: 自定义 Transformer 模块 (与之前相同)
+# 步骤 1: 自定义 Transformer 模块
 # ==============================================================================
 class CustomTransformerEncoderLayer(nn.TransformerEncoderLayer):
     def forward(self, src, src_mask=None, src_key_padding_mask=None, **kwargs):
@@ -205,7 +205,7 @@ def analyze_and_compare_models(model1_path, model2_path, data_samples, num_sampl
     print("--- 开始对比两个模型的全局平均注意力 ---")
 
     # --- 模型参数定义 ---
-    # 确保这里的参数与您训练的两个模型一致
+    # 确保这里的参数与训练的两个模型一致
     model1_params = {'input_dim': 6, 'd_model': 256, 'nhead': 4, 'num_b_encoder_layers': 2,
                      'num_main_encoder_layers': 3, 'dim_feedforward': 512}
     model2_params = {'input_dim': 6, 'd_model': 256, 'nhead': 4, 'num_encoder_layers': 3, 'dim_feedforward': 512}
@@ -285,11 +285,11 @@ def load_jsonl_data(json_file_path):
 #  主程序入口
 # ==============================================================================
 if __name__ == "__main__":
-    # --- 【请修改】这里填写您的两个模型的路径 ---
+    # 模型的路径
     MODEL1_PATH = "./trained/SetProcessor_Transformer.pth"
     MODEL2_PATH = "./trained/transformer_move_predictor_6x3.pth"
 
-    # --- 【请修改】这里填写用于对比分析的数据文件路径 ---
+    #用于对比分析的数据文件路径
     DATA_PATH = "json/data_Attention_Map.jsonl"
 
     # 加载数据
