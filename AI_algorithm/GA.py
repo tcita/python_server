@@ -139,7 +139,7 @@ def GA_Strategy(genome, A, B):
             if all_features:
                 features_tensor = torch.tensor(all_features, dtype=torch.float32, device=device)
 
-                # --- 關鍵步驟：在此處添加批次標準化 ---
+                #在此處添加批次標準化 
                 # 1. 計算當前批次特徵的均值和標準差
                 #    keepdim=True 保持維度以便廣播
                 mean = torch.mean(features_tensor, dim=0, keepdim=True)
@@ -150,7 +150,7 @@ def GA_Strategy(genome, A, B):
 
                 # 3. 進行標準化 (Z-score)
                 standardized_features = (features_tensor - mean) / (std + epsilon)
-                # ----------------------------------------
+
 
                 # 使用標準化後的特徵進行加權求值
                 values = torch.matmul(standardized_features, genome_tensor)
@@ -285,7 +285,7 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
     """
 
     # 1. 分割岛屿
-    # =================================================================
+
     island_size = pop_size // islands
     island_populations = []
     island_fitnesses = []
@@ -296,7 +296,7 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
         island_fitnesses.append(fitnesses[start_idx:end_idx])
 
     # 2. 每个岛屿独立进化，产生下一代候选种群
-    # =================================================================
+
     new_island_populations = []
     for i in range(islands):
         # 使用传入的 fitnesses[i] 进行精英选择和锦标赛选择
@@ -326,7 +326,7 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
 
 
     # 3. 迁移过程
-    # =================================================================
+
     migration_size = int(island_size * migration_rate)
     if migration_size == 0:  # 确保至少有1个迁移者，如果种群很小
         migration_size = 1
@@ -361,7 +361,7 @@ def island_model_evolution(population, fitnesses, pop_size, tournament_size, mut
 
 
     # 4. 合并所有岛屿种群
-    # =================================================================
+
     new_population = []
     for pop in new_island_populations:
         new_population.extend(pop)
